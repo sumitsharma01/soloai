@@ -1,0 +1,10 @@
+.env
+.env.*
+!.env.example
+*.db
+*.db-*
+__pycache__/
+.pytest_cache/
+.venv/
+*.pyc
+infra/main.json
