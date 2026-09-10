@@ -8,10 +8,12 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sqlalchemy import create_engine, text
 import httpx
+from starlette.concurrency import run_in_threadpool
+from app import foundry
 
 PROD = os.getenv('SOLOAI_ENV') == 'production'
 DATABASE = os.getenv('DATABASE_URL', 'sqlite:///./soloai.db')
-if PROD and (not DATABASE.startswith('postgresql') or not os.getenv('AZURE_OPENAI_ENDPOINT')):
+if PROD and (not DATABASE.startswith('postgresql') or not (os.getenv('AZURE_OPENAI_ENDPOINT') or os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT'))):
     raise RuntimeError('Production requires PostgreSQL and Azure Foundry configuration')
 engine = create_engine(DATABASE, pool_pre_ping=True, **({'connect_args': {'check_same_thread': False}} if DATABASE.startswith('sqlite') else {}))
 from app.packages import PACKAGES
@@ -21,7 +23,7 @@ def password_hash(password, salt): return hashlib.pbkdf2_hmac('sha256', password
 def init_db():
     with engine.begin() as c:
         for sql in [
-          'CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, budget INTEGER NOT NULL DEFAULT 10000, window BIGINT NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0, stopped INTEGER NOT NULL DEFAULT 0)',
+          'CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, budget INTEGER NOT NULL DEFAULT 10000, "window" BIGINT NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0, stopped INTEGER NOT NULL DEFAULT 0)',
           'CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES tenants(id), expires BIGINT NOT NULL)',
           'CREATE TABLE IF NOT EXISTS api_keys (token TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES tenants(id))',
           'CREATE TABLE IF NOT EXISTS agents (tenant TEXT NOT NULL REFERENCES tenants(id), id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, guidance TEXT NOT NULL DEFAULT \'\', PRIMARY KEY (tenant,id))',
@@ -108,7 +110,7 @@ def dashboard(t=Depends(tenant)):
         agents=[dict(r)|PACKAGES[r['id']] for r in c.execute(text('SELECT id,enabled,guidance FROM agents WHERE tenant=:t ORDER BY id DESC'),{'t':t}).mappings()]
         runs=[dict(r) for r in c.execute(text('SELECT id,agent,status,tokens,latency,created FROM executions WHERE tenant=:t ORDER BY created DESC LIMIT 30'),{'t':t}).mappings()]
         logs=[dict(r) for r in c.execute(text('SELECT action,created FROM audit WHERE tenant=:t ORDER BY created DESC LIMIT 20'),{'t':t}).mappings()]
-    return {'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
+    return {'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Live Foundry agent • '+os.getenv('AZURE_FOUNDRY_AGENT_NAME','') if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else 'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
 class Config(BaseModel):
     enabled: bool
     guidance: str = Field(default='',max_length=4000)
@@ -144,15 +146,20 @@ async def execute(b,t):
         if not cfg['enabled']: raise HTTPException(409,'This agent is disabled')
         epoch=c.execute(text('SELECT stopped FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
         # UTF-8 bytes upper-bound text tokens; add message overhead and output ceiling.
-        reserve=len((b.content+cfg['guidance']+PACKAGES[a]['instructions']).encode())+1024+256
-        c.execute(text('UPDATE tenants SET window=:w,requests=0 WHERE id=:t AND window<>:w'),{'w':now//60,'t':t})
+        payload=foundry.envelope(a,cfg['guidance'],b.content)
+        reserve=(len((payload+foundry.INSTRUCTIONS).encode())+foundry.MAX_OUTPUT+512 if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else len((b.content+cfg['guidance']+PACKAGES[a]['instructions']).encode())+1024+256)
+        c.execute(text('UPDATE tenants SET "window"=:w,requests=0 WHERE id=:t AND "window"<>:w'),{'w':now//60,'t':t})
         ok=c.execute(text('UPDATE tenants SET used=used+:r, requests=requests+1 WHERE id=:t AND used+:r<=budget AND requests<20'),{'r':reserve,'t':t}).rowcount
         if not ok: raise HTTPException(429,'Usage allowance or request limit reached')
         c.execute(text('INSERT INTO executions VALUES (:id,:t,:a,\'running\',:r,0,:now)'),{'id':run,'t':t,'a':a,'r':reserve,'now':now})
-    status='completed';used=reserve;reply=''
+    status='completed';used=reserve;reply='';needs_human=False
     try:
         endpoint=os.getenv('AZURE_OPENAI_ENDPOINT')
-        if endpoint:
+        if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT'):
+            answer,used=await run_in_threadpool(foundry.invoke,payload)
+            reply=('Subject: '+answer.subject+'\n\n' if answer.subject else '')+answer.reply
+            needs_human=answer.needs_human
+        elif endpoint:
             from azure.identity.aio import DefaultAzureCredential
             async with DefaultAzureCredential() as cred: token=(await cred.get_token('https://cognitiveservices.azure.com/.default')).token
             async with httpx.AsyncClient(timeout=45) as client:
@@ -170,11 +177,11 @@ async def execute(b,t):
         status='failed' # No prompts, provider errors or response content enter logs.
     finally:
         with engine.begin() as c:
-            c.execute(text('UPDATE tenants SET used=used-:refund WHERE id=:t'),{'refund':max(0,reserve-used),'t':t})
+            c.execute(text('UPDATE tenants SET used=used+:adjustment WHERE id=:t'),{'adjustment':used-reserve,'t':t})
             c.execute(text('UPDATE executions SET status=:s,tokens=:u,latency=:ms WHERE id=:id AND tenant=:t'),{'s':status,'u':used,'ms':int((time.monotonic()-start)*1000),'id':run,'t':t})
         print(json.dumps({'event':'agent.execution','status':status,'agent':a,'latency_ms':int((time.monotonic()-start)*1000)}),flush=True)
     if status!='completed': raise HTTPException(503,'Execution '+status)
-    return {'id':run,'agent':a,'reply':reply,'draft':a=='email-support','tokens':used}
+    return {'id':run,'agent':a,'reply':reply,'draft':a=='email-support','tokens':used,'needs_human':needs_human}
 @app.post('/api/events')
 async def event(b:Event,t=Depends(api_tenant)): return await execute(b,t)
 @app.post('/api/try')

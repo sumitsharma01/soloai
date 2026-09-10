@@ -1,3 +1,5 @@
+import os
+os.environ.pop('AZURE_FOUNDRY_PROJECT_ENDPOINT', None)
 import os, tempfile
 os.environ['DATABASE_URL']='sqlite:///'+tempfile.mktemp(suffix='.db')
 os.environ.pop('AZURE_OPENAI_ENDPOINT',None)
@@ -64,3 +66,30 @@ def test_production_rejects_missing_configuration():
     result=subprocess.run([sys.executable,'-c','import app.main'],env=env,capture_output=True)
     assert result.returncode!=0
     assert b'Production requires PostgreSQL' in result.stderr
+
+def test_live_adapter_tenant_context_and_inflight_stop(monkeypatch):
+    import json
+    import threading
+    from concurrent.futures import ThreadPoolExecutor
+    from app import foundry
+    started,release=threading.Event(),threading.Event()
+    def invoke(payload):
+        assert json.loads(payload)['business_guidance']=='Tenant-only policy'
+        started.set()
+        assert release.wait(5)
+        return foundry.SupportReply(channel='website_chat',subject='',reply='Suppressed reply',needs_human=False),123
+    monkeypatch.setenv('AZURE_FOUNDRY_PROJECT_ENDPOINT','https://test.services.ai.azure.com/api/projects/test')
+    monkeypatch.setattr(foundry,'invoke',invoke)
+    with TestClient(app) as c:
+        create(c,'stop-live@example.com')
+        c.patch('/api/agents/website-chat',json={'enabled':True,'guidance':'Tenant-only policy'})
+        with ThreadPoolExecutor() as pool:
+            future=pool.submit(c.post,'/api/try',json={'type':'chat.message','content':'Hello'})
+            assert started.wait(5)
+            assert c.post('/api/stop').status_code==200
+            release.set()
+            response=future.result()
+        assert response.status_code==503 and 'Suppressed reply' not in response.text
+        dashboard=c.get('/api/dashboard').json()
+        assert dashboard['workspace']['used']==123
+        assert dashboard['executions'][0]['status']=='stopped'

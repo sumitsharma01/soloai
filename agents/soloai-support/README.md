@@ -1,6 +1,6 @@
 # SoloAI Support — one shared Foundry prompt agent
 
-**Status: created and read-back verified in the configured Azure project as `soloai-support:1`, using `gpt-5.4`. A synthetic email-draft invocation passed on 10 September 2026 (625 tokens; `store=false`). Not yet connected to the SoloAI dashboard.**
+**Status: created and read-back verified in the configured Azure project as `soloai-support:1`, using `gpt-5.4`. A synthetic email-draft invocation passed on 10 September 2026 (625 tokens; `store=false`). Connected to Website Chat and Email Support through the version-pinned runtime adapter.**
 
 One agent supports website support answers and email drafts. It has **zero tools**, so it cannot send mail, query a database, read an inbox, or issue refunds. It uses the supplied business guidance, marks uncertainty for human handling, and returns a small JSON response. Instructions improve behavior; they do not prove correctness or replace tenant authorization.
 
@@ -35,7 +35,7 @@ Each call must contain a single tenant's business guidance and customer message.
 
 ## SoloAI integration boundary
 
-Creating this agent does **not** automatically attach it to the current dashboard. The runtime still calls a model directly. A follow-up integration must invoke a pinned agent version, validate the returned JSON, preserve tenant isolation, and enforce usage/stop rules around each invocation. It must not assume that the current model-only token reservation covers every possible agent execution.
+Set the four `AZURE_FOUNDRY_*` environment variables described in [live setup](../../docs/live-agent.md) to attach this agent. The runtime validates its reviewed definition and response contract, reserves tokens including the shared instructions and output ceiling, and enforces tenant limits and stop rules.
 
 The expected result is:
 
@@ -43,6 +43,6 @@ The expected result is:
 {"channel":"email_draft","subject":"Your return request","reply":"...","needs_human":true}
 ```
 
-Keys are output conventions, not an Azure structured-output guarantee; the future runtime adapter must validate them. Do not send an email based only on model output. Keep provider credentials out of the browser and do not grant agent-creation rights to the ordinary SaaS runtime identity.
+Keys are output conventions, not an Azure structured-output guarantee; the runtime adapter validates them. Do not send an email based only on model output. Keep provider credentials out of the browser and do not grant agent-creation rights to the ordinary SaaS runtime identity.
 
 [Microsoft prompt-agent quickstart](https://learn.microsoft.com/en-us/azure/foundry/agents/quickstarts/prompt-agent)
