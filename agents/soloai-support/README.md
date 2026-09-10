@@ -1,6 +1,6 @@
 # SoloAI Support — one shared Foundry prompt agent
 
-**Status: definition and creation utility prepared; not yet created in Azure.**
+**Status: created and read-back verified in the configured Azure project as `soloai-support:1`, using `gpt-5.4`. A synthetic email-draft invocation passed on 10 September 2026 (625 tokens; `store=false`). Not yet connected to the SoloAI dashboard.**
 
 One agent supports website support answers and email drafts. It has **zero tools**, so it cannot send mail, query a database, read an inbox, or issue refunds. It uses the supplied business guidance, marks uncertainty for human handling, and returns a small JSON response. Instructions improve behavior; they do not prove correctness or replace tenant authorization.
 

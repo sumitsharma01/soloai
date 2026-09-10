@@ -67,7 +67,7 @@ Never place the SoloAI key in frontend code. Key rotation invalidates the old ke
 
 ## Prepared Foundry support agent
 
-[**SoloAI Support agent**](agents/soloai-support/README.md) includes website replies, review-only email drafts, a tool-free definition, synthetic test cases and a creation script. It is prepared for creation in your Foundry project; it is not yet deployed or connected to the dashboard.
+[**SoloAI Support agent**](agents/soloai-support/README.md) includes website replies, review-only email drafts, a tool-free definition, synthetic test cases and a creation script. Agent `soloai-support:1` has been created in the configured Foundry project and passed a live synthetic email-draft check using `gpt-5.4`. It is not yet connected to the dashboard.
 
 ## Use Azure Foundry
 

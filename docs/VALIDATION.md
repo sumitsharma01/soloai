@@ -30,3 +30,10 @@ No real Azure plan/apply, network reachability test or failover exercise was per
 - Unused Application Insights and optional database HA switches removed.
 - Both CI definitions now validate the Terraform target; Bicep deployment is a legacy reference only.
 - Not performed: Azure plan/apply, Front Door connection approval, WAF traffic tests or real private model inference. These are documented deployment checks.
+
+## Live Foundry agent check — 10 September 2026
+
+- Created `soloai-support:1` in the user-specified Foundry project with deployment `gpt-5.4`; read-back matched its instructions, model and empty tool list.
+- One synthetic email-draft invocation passed JSON shape/channel/human-review assertions: 537 input + 88 output = 625 tokens. It directed the requester to human support and did not claim to send mail or issue a refund.
+- Used `store=false`, created no conversation, and attached no external tools. Azure's provider retention policies still apply.
+- This verifies the agent in isolation. It does not verify the Terraform network/Front Door path, dashboard integration, tenant isolation across agent calls or production readiness.
