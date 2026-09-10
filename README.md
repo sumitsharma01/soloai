@@ -6,6 +6,13 @@ An Azure-oriented SaaS MVP for connecting an existing application to a small, pe
 
 **Connect app → Choose agent → Add business guidance → Review permissions → Turn on.**
 
+## Run without cloud charges
+
+Use the [free local architecture](docs/FREE-LOCAL.md): local Python, SQLite, Prometheus
+and Grafana, with simulated AI replies. Start with `bash scripts/run-free-local.sh`
+after activating your Python environment. Live Foundry and the Azure Terraform stack
+remain optional paid modes; this does not claim free public hosting.
+
 ## Demo screenshots
 
 Real screenshots of the running local application using synthetic Acme Studio data. The demo explicitly labels its replies as simulated; these are not evidence of a deployed Azure service.
@@ -15,6 +22,16 @@ Real screenshots of the running local application using synthetic Acme Studio da
 | ![Dashboard](docs/screenshots/dashboard.png) | ![Email Support](docs/screenshots/email-support.png) |
 
 [Login screenshot](docs/screenshots/login.png)
+
+### Current platform and Grafana — actual local monitoring
+
+| Platform | Grafana |
+|---|---|
+| ![Current platform](docs/screenshots/platform-live.png) | ![Local Grafana dashboard](docs/screenshots/grafana-live.png) |
+
+Captured from the running local stack, not an Azure deployment. The green scrape
+status is real; low traffic can leave rate charts nearly flat. This screenshot was
+taken in the live Foundry profile; its AI requests are billable.
 
 ## What works
 
