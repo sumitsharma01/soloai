@@ -1,0 +1,7 @@
+apiVersion: 1
+providers:
+  - name: SoloAI
+    folder: SoloAI
+    type: file
+    options:
+      path: ${SOLOAI_DASHBOARD_PATH}

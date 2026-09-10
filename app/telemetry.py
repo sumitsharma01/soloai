@@ -1,12 +1,16 @@
 """Allowlisted operational events; never log request bodies or identities."""
 import json
 import time
+import os
 
 FIELDS = {'agent', 'status', 'latency_ms', 'provider_ms', 'tokens', 'usage_kind',
           'route', 'status_code', 'allowance_percent'}
 
 def emit(event, **fields):
     safe = {key: value for key, value in fields.items() if key in FIELDS}
+    if os.getenv('SOLOAI_METRICS_PORT'):
+        from app.metrics import observe
+        observe(event,safe)
     print(json.dumps({'schema': 1, 'event': event, **safe}), flush=True)
 
 class RequestTelemetry:

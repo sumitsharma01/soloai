@@ -37,7 +37,16 @@ def init_db():
 @asynccontextmanager
 async def lifespan(app):
     if os.getenv('SOLOAI_INIT_SCHEMA','true').lower()=='true': init_db()
-    yield
+    metrics_server=None
+    if os.getenv('SOLOAI_METRICS_PORT'):
+        from app.metrics import start
+        metrics_server,_=start(int(os.environ['SOLOAI_METRICS_PORT']))
+    try:
+        yield
+    finally:
+        if metrics_server:
+            metrics_server.shutdown()
+            metrics_server.server_close()
 app = FastAPI(title='SoloAI', lifespan=lifespan, docs_url=None if PROD else '/docs', redoc_url=None)
 @app.middleware('http')
 async def safeguards(request, call_next):

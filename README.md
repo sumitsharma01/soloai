@@ -233,3 +233,8 @@ metrics, with three bounded alerts. Reuses Log Analytics; no Prometheus/Grafana 
 [Pipeline setup](docs/CICD.md): reviewed PR plan → merge → fresh saved plan → protected
 environment approval → Azure apply → health check. Uses OIDC and a private runner.
 Enable `TERRAFORM_DELIVERY_ENABLED` only after configuring identities, state and approvals.
+
+### Try a local Grafana dashboard
+
+[Local monitoring instructions](monitoring/README.md) run optional Prometheus and
+Grafana alongside the live platform, without deploying Azure hosting infrastructure.
