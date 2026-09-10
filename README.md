@@ -43,7 +43,7 @@ uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log
 
 Open **http://127.0.0.1:8000**. Create a workspace with a password of at least 12 characters. Agents start disabled. Open an agent, add business guidance, save, turn it on, then try a message. Test Email Support the same way; it returns a draft.
 
-Without `AZURE_OPENAI_ENDPOINT`, the application uses clearly labeled deterministic demo replies. No API key, model subscription or AI charge is required. The local SQLite file is ignored by Git. The repository does not ship accounts or passwords. `.env.example` documents settings; the app reads environment variables and does not automatically load `.env`.
+Without either `AZURE_OPENAI_ENDPOINT` or `AZURE_FOUNDRY_PROJECT_ENDPOINT`, the application uses clearly labeled deterministic demo replies. No API key, model subscription or AI charge is required. The local SQLite file is ignored by Git. The repository does not ship accounts or passwords. `.env.example` documents settings; the app reads environment variables and does not automatically load `.env`.
 
 ## Connect an existing app
 
@@ -69,7 +69,90 @@ Never place the SoloAI key in frontend code. Key rotation invalidates the old ke
 
 [**SoloAI Support agent**](agents/soloai-support/README.md) includes website replies, review-only email drafts, a tool-free definition, synthetic test cases and a creation script. Agent `soloai-support:1` has been created in the configured Foundry project and passed a live synthetic email-draft check using `gpt-5.4`. Both dashboard test flows now invoke the pinned agent through the optional Foundry adapter. See [live setup](docs/live-agent.md).
 
-## Use Azure Foundry
+## Foundry agent integration: identity or API key
+
+### Recommended: connect the SoloAI runtime with Microsoft Entra ID
+
+After installing the Python requirements, authenticate locally with `az login` and
+export these settings before starting SoloAI:
+
+```bash
+export AZURE_FOUNDRY_PROJECT_ENDPOINT=https://soloai-v0-resource.services.ai.azure.com/api/projects/soloai-v0
+export AZURE_FOUNDRY_AGENT_NAME=soloai-support
+export AZURE_FOUNDRY_AGENT_VERSION=1
+export AZURE_FOUNDRY_MODEL=gpt-5.4
+uvicorn app.main:app --host 127.0.0.1 --port 8000 --no-access-log --no-proxy-headers
+```
+
+In Azure, use the application's managed identity with the required project read/invoke
+permissions. These settings take precedence over the direct-model backend. The adapter
+checks the pinned agent definition and validates its JSON reply. See [full setup](docs/live-agent.md).
+
+### Optional: Foundry project REST API with an API key
+
+Microsoft's [Foundry REST reference](https://ai.azure.com/api-reference) documents
+`api-key` authentication for project APIs. Use this option only where the target
+resource and operation accept keys and local authentication is enabled.
+**This is a standalone REST integration example, not a supported authentication
+switch in the current SoloAI runtime**, which uses `DefaultAzureCredential`.
+Setting `FOUNDRY_API_KEY` does not change the dashboard's authentication method.
+This key path has not been live-tested against the configured SoloAI project.
+
+Store the key in a server-side secret manager and inject `FOUNDRY_API_KEY` into the
+process environment. Do not paste it into source code, frontend code, or shell history.
+With `AZURE_FOUNDRY_PROJECT_ENDPOINT` set as above, this Python example calls the
+pinned support agent:
+
+```python
+import os
+import httpx
+
+response = httpx.post(
+    os.environ['AZURE_FOUNDRY_PROJECT_ENDPOINT'].rstrip('/') + '/openai/v1/responses',
+    headers={'api-key': os.environ['FOUNDRY_API_KEY']},
+    json={
+        'agent_reference': {
+            'type': 'agent_reference', 'name': 'soloai-support', 'version': '1'
+        },
+        'input': '{"channel":"website_chat","business_guidance":"We offer a 30-day return policy.","customer_message":"What is your return policy?"}',
+        'store': False,
+        'max_output_tokens': 2048,
+    },
+    timeout=60,
+)
+response.raise_for_status()
+# Parse and validate response.json() on your server; avoid logging customer content.
+```
+
+This direct example bypasses SoloAI's tenant permissions and usage accounting; use
+SoloAI's `/api/events` endpoint for customer-facing integrations. A SoloAI application
+key (`SOLOAI_API_KEY`) authenticates your server to SoloAI and is different from an
+Azure resource key. If Azure returns 401/403, verify endpoint support, key scope and
+local-auth policy; keep Entra authentication where keys are unavailable. The existing
+Terraform deliberately requires local authentication to be disabled on its shared
+model resource; these instructions do not change that policy.
+
+### Simple request flow
+
+```mermaid
+flowchart LR
+    Customer[Customer] --> Server[Your application server]
+    Server -->|SoloAI application key| API[SoloAI API]
+    Dashboard[SoloAI dashboard] -->|Login session| API
+    API --> Checks[Tenant permissions and token allowance]
+    Checks --> Agent[Shared Foundry agent: soloai-support version 1]
+    Agent --> Model[Shared gpt-5.4 model]
+    Model --> Validate[Validate reply and record usage]
+    Validate --> Reply[Chat reply or email draft]
+    Reply --> Customer
+```
+
+The SoloAI-to-Foundry connection currently uses Entra ID. Each invocation contains
+only the authenticated workspace's guidance and message, with no shared conversation.
+For the planned Azure deployment, Front Door + WAF protects the SoloAI API and routes
+to Container Apps privately; that infrastructure is not part of the local demo.
+
+## Use Azure Foundry directly as a model
 
 Use a chat-compatible Azure OpenAI deployment in Foundry. Set:
 
