@@ -22,3 +22,11 @@ The screenshots are actual local renders with simulated responses, not generated
 - Architecture documentation maps current code behavior, shared model/tenant boundaries, reliability limits and future connector work.
 
 No real Azure plan/apply, network reachability test or failover exercise was performed. Mocked tests do not establish live deployment success.
+
+## Minimal private-edge revision — 10 September 2026
+
+- Terraform validation passed with the locked AzureRM provider.
+- Seven mocked tests passed: private storage/secrets, internal/public-disabled app origin, Premium Private Link, WAF Prevention/rate binding, HTTPS/no cache, private AI DNS/endpoint, rejection of public/key-authenticated AI accounts and invalid limits.
+- Unused Application Insights and optional database HA switches removed.
+- Both CI definitions now validate the Terraform target; Bicep deployment is a legacy reference only.
+- Not performed: Azure plan/apply, Front Door connection approval, WAF traffic tests or real private model inference. These are documented deployment checks.

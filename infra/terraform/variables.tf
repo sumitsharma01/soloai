@@ -54,7 +54,7 @@ variable "vnet_address_space" {
   }
 }
 
-# ---- Database: inexpensive staging defaults; HA is explicit ----
+# ---- Database: one small server, 32 GiB, seven-day backups ----
 variable "database_admin_password" {
   description = "Bootstrap PostgreSQL administrator password. Sensitive, but still present in Terraform state."
   type        = string
@@ -66,51 +66,9 @@ variable "database_admin_password" {
 }
 
 variable "database_sku" {
-  description = "Flexible Server SKU. B_Standard_B1ms is staging-sized; GP_Standard_D2s_v3 is an HA-capable example."
+  description = "Flexible Server size. Start small; raise this after measuring database load."
   type        = string
   default     = "B_Standard_B1ms"
-}
-
-variable "database_storage_mb" {
-  description = "Provisioned database storage in MB."
-  type        = number
-  default     = 32768
-}
-
-variable "database_backup_days" {
-  description = "Point-in-time backup retention, 7–35 days. Backups are not a tested recovery guarantee."
-  type        = number
-  default     = 7
-  validation {
-    condition     = var.database_backup_days >= 7 && var.database_backup_days <= 35 && floor(var.database_backup_days) == var.database_backup_days
-    error_message = "Backup retention must be an integer between 7 and 35 days."
-  }
-}
-
-variable "database_ha_enabled" {
-  description = "Enable zone-redundant PostgreSQL HA only with a supported SKU and region. Raises cost."
-  type        = bool
-  default     = false
-  validation {
-    condition     = !var.database_ha_enabled || startswith(var.database_sku, "GP_") || startswith(var.database_sku, "MO_")
-    error_message = "PostgreSQL HA requires a General Purpose or Memory Optimized SKU, not Burstable."
-  }
-}
-
-variable "database_primary_zone" {
-  description = "Primary PostgreSQL availability zone; check regional availability."
-  type        = string
-  default     = "1"
-}
-
-variable "database_standby_zone" {
-  description = "Standby zone when database HA is enabled. Must differ from primary."
-  type        = string
-  default     = "2"
-  validation {
-    condition     = !var.database_ha_enabled || var.database_standby_zone != var.database_primary_zone
-    error_message = "Zone-redundant HA needs distinct primary and standby zones."
-  }
 }
 
 variable "runtime_database_url" {
@@ -137,16 +95,6 @@ variable "container_image" {
   validation {
     condition     = startswith(var.container_image, "${var.registry_name}.azurecr.io/") && !endswith(var.container_image, ":latest") && can(regex("(:[^/]+|@sha256:[a-f0-9]{64})$", var.container_image))
     error_message = "Use an immutable build tag or digest from the configured ACR; latest is not accepted."
-  }
-}
-
-variable "public_origin" {
-  description = "Exact HTTPS browser origin without trailing slash. Null derives the app's default Azure hostname."
-  type        = string
-  default     = null
-  validation {
-    condition     = var.public_origin == null ? true : can(regex("^https://[a-zA-Z0-9.-]+(:[0-9]+)?$", var.public_origin))
-    error_message = "Use an HTTPS origin without a path, query or trailing slash."
   }
 }
 
@@ -188,5 +136,16 @@ variable "alert_email" {
   validation {
     condition     = var.alert_email == null ? true : can(regex("^[^@ ]+@[^@ ]+\\.[^@ ]+$", var.alert_email))
     error_message = "Supply a valid operations email or null."
+  }
+}
+
+# ---- Edge protection ----
+variable "edge_requests_per_minute" {
+  description = "Approximate WAF threshold per socket IP per minute; not a per-tenant token budget."
+  type        = number
+  default     = 300
+  validation {
+    condition     = var.edge_requests_per_minute >= 1 && floor(var.edge_requests_per_minute) == var.edge_requests_per_minute
+    error_message = "Use a positive integer edge rate threshold."
   }
 }

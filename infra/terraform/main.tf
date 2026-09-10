@@ -12,10 +12,6 @@ data "azurerm_container_registry" "shared" {
   resource_group_name = data.azurerm_resource_group.existing.name
 }
 
-data "azurerm_cognitive_account" "shared_model" {
-  name                = var.model_resource_name
-  resource_group_name = data.azurerm_resource_group.existing.name
-}
 
 locals {
   location = data.azurerm_resource_group.existing.location
@@ -32,9 +28,9 @@ locals {
   database_cidr  = cidrsubnet(var.vnet_address_space, 8, 2) # following /24
   endpoints_cidr = cidrsubnet(var.vnet_address_space, 8, 3) # following /24
 
-  # The environment's default domain exists before the app: no self-reference
-  # cycle or two-pass deployment is needed for the origin/CSRF configuration.
-  public_origin = coalesce(var.public_origin, "https://${local.app_name}.${azurerm_container_app_environment.main.default_domain}")
+  # The Front Door endpoint is the only public origin. It is independent of the
+  # app, so setting PUBLIC_ORIGIN here does not create a dependency cycle.
+  public_origin = "https://${azurerm_cdn_frontdoor_endpoint.main.host_name}"
 
   # For staging only. Replace with a migrated runtime role for production.
   # urlencode protects delimiters in generated passwords; secrets stay in state.

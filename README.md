@@ -26,7 +26,7 @@ Real screenshots of the running local application using synthetic Acme Studio da
 - 10,000 lifetime starter tokens and 20 agent requests per minute per workspace, enforced in SQL before inference.
 - Execution status, latency, token totals, optional operator-configured cost estimate and configuration audit history.
 - Server-side JavaScript SDK, application key generation/rotation and connection instructions.
-- Azure Bicep VNet/private database/Key Vault/Container Apps/Monitor template, Azure DevOps deployment pipeline and GitHub CI.
+- Minimal Terraform: Front Door Premium + WAF, private Container Apps/data/model connections, managed identity, basic monitoring and credential-free CI.
 
 **Current scope:** a working local MVP and Azure deployment foundation. Azure inference is implemented but requires your configured model and credentials. There is no live Gmail/Outlook connection, email sending, billing, third-party marketplace execution, or production identity lifecycle. Planned store cards are labeled accordingly. See [security limitations](SECURITY.md) and [Azure launch steps](docs/AZURE.md).
 
@@ -84,21 +84,18 @@ For local Azure access, sign in with Azure CLI and grant the principal the **Cog
 
 **[Architecture diagrams →](docs/ARCHITECTURE.md)** — Azure services and network boundaries, concurrent customer signup/agent activation, shared-model tenant isolation, event routing, failure behavior, reliability and scaling decisions.
 
-Terraform is an alternative to the Bicep deployment. Choose one owner per Azure environment; the existing Azure deployment pipeline still uses Bicep. No Azure resources are provisioned by the CI validation job.
+Terraform is the supported private-edge deployment. Front Door Premium + WAF is the public entry point; Container Apps, database, vault and model access are private. Both pipelines validate only; use the reviewed-plan deployment runbook. The old Bicep files are legacy references.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  C[Customer app server] -->|TLS + server key| G[Event gateway]
-  D[SoloAI dashboard] -->|Session| G
-  G --> O[Dynamic orchestrator]
-  O <--> P[(Tenant configuration + usage)]
-  O --> W[Website Chat]
-  O --> E[Email Support]
-  W --> F[Shared Azure Foundry model]
-  E --> F
-  O --> M[Metadata-only monitoring]
+  I[Internet] --> F[Front Door Premium + WAF]
+  F -->|Private Link| A[Private Container Apps]
+  A --> P[(Private PostgreSQL)]
+  A --> K[Private Key Vault]
+  A --> M[Private shared Foundry model]
+  A --> L[Log Analytics]
 ```
 
 One service plus PostgreSQL keeps the MVP small. Agent activation changes database configuration, not infrastructure. PostgreSQL coordinates limits across replicas. There are no per-customer containers, per-customer models, Kubernetes clusters or speculative workflow builders. [Architecture, tradeoffs and scaling path](docs/ARCHITECTURE.md).
@@ -109,7 +106,9 @@ One service plus PostgreSQL keeps the MVP small. Agent activation changes databa
 pip install -r requirements-dev.txt
 pytest -q
 pip-audit -r requirements.txt
-az bicep build --file infra/main.bicep
+terraform -chdir=infra/terraform init -backend=false
+terraform -chdir=infra/terraform validate
+terraform -chdir=infra/terraform test
 docker build -t soloai:local .
 ```
 
@@ -123,9 +122,9 @@ app/packages.py          Trusted first-party package registry
 app/static/              Responsive dashboard (no frontend build required)
 sdk/soloai.mjs           Server-only JavaScript integration
 examples/server.mjs     Chat and email event examples
-infra/main.bicep         Original Azure Bicep infrastructure
-infra/terraform/         Segregated Terraform alternative + runbook + tests
-azure-pipelines.yml     Validate, build, manually gated deployment
+infra/main.bicep         Legacy Bicep reference
+infra/terraform/         Minimal private-edge Terraform + runbook + tests
+azure-pipelines.yml     Application + Terraform validation
 .github/workflows/      GitHub validation
 scripts/                Deployment parameters and metadata cleanup
 tests/                 Security and behavior checks

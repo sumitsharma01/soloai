@@ -1,7 +1,7 @@
 # Deliberately output identifiers and URLs only, never credentials or tokens.
 output "application_url" {
-  description = "Default public HTTPS URL; frontend mutations use the configured public origin."
-  value       = "https://${azurerm_container_app.main.ingress[0].fqdn}"
+  description = "Use this Front Door URL for both dashboard and server SDK; activation requires origin-link approval."
+  value       = local.public_origin
 }
 
 output "public_origin" {
@@ -32,4 +32,14 @@ output "application_identity_principal_id" {
 output "monitor_workspace_id" {
   description = "Azure resource ID for Monitor queries and operational dashboards."
   value       = azurerm_log_analytics_workspace.main.id
+}
+
+output "container_environment_id" {
+  description = "On this environment, approve the exact pending Front Door origin private connection."
+  value       = azurerm_container_app_environment.main.id
+}
+
+output "private_origin_hostname" {
+  description = "Diagnostic origin hostname; must be unreachable from the public internet."
+  value       = azurerm_container_app.main.ingress[0].fqdn
 }

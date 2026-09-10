@@ -5,7 +5,9 @@ resource "azurerm_container_app_environment" "main" {
   location                       = local.location
   resource_group_name            = data.azurerm_resource_group.existing.name
   infrastructure_subnet_id       = azurerm_subnet.apps.id
-  internal_load_balancer_enabled = false
+  internal_load_balancer_enabled = true
+  public_network_access          = "Disabled"
+  logs_destination               = "log-analytics"
   log_analytics_workspace_id     = azurerm_log_analytics_workspace.main.id
   tags                           = local.tags
 
@@ -42,6 +44,7 @@ resource "azurerm_container_app" "main" {
   }
 
   ingress {
+    # External to this app, but private to the environment/Private Link.
     external_enabled           = true
     allow_insecure_connections = false
     target_port                = 8000
@@ -121,5 +124,7 @@ resource "azurerm_container_app" "main" {
     azurerm_role_assignment.registry_pull,
     azurerm_role_assignment.model_inference,
     azurerm_role_assignment.app_secret_reader,
+    azurerm_private_endpoint.model,
+    azurerm_private_dns_zone_virtual_network_link.model,
   ]
 }

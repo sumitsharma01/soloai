@@ -1,21 +1,11 @@
-# Console logs contain operational fields only, not prompts or model replies.
-# Application Insights is provisioned for future explicit safe instrumentation;
-# it does not collect automatic distributed traces in the current application.
+# 5. BASIC OPERATIONS
+# One log workspace and one failure alert. No unused tracing service or extra collector.
 resource "azurerm_log_analytics_workspace" "main" {
   name                = "${var.name_prefix}-logs"
   location            = local.location
   resource_group_name = data.azurerm_resource_group.existing.name
   sku                 = "PerGB2018"
   retention_in_days   = 30
-  tags                = local.tags
-}
-
-resource "azurerm_application_insights" "main" {
-  name                = "${var.name_prefix}-insights"
-  location            = local.location
-  resource_group_name = data.azurerm_resource_group.existing.name
-  workspace_id        = azurerm_log_analytics_workspace.main.id
-  application_type    = "web"
   tags                = local.tags
 }
 

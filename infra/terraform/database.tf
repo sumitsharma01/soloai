@@ -8,30 +8,19 @@ resource "azurerm_postgresql_flexible_server" "main" {
   administrator_login           = "soloadmin"
   administrator_password        = var.database_admin_password
   sku_name                      = var.database_sku
-  storage_mb                    = var.database_storage_mb
-  zone                          = var.database_primary_zone
-  backup_retention_days         = var.database_backup_days
+  storage_mb                    = 32768
+  backup_retention_days         = 7
   geo_redundant_backup_enabled  = false
   delegated_subnet_id           = azurerm_subnet.database.id
   private_dns_zone_id           = azurerm_private_dns_zone.database.id
   public_network_access_enabled = false
   tags                          = local.tags
 
-  dynamic "high_availability" {
-    for_each = var.database_ha_enabled ? [true] : []
-    content {
-      mode                      = "ZoneRedundant"
-      standby_availability_zone = var.database_standby_zone
-    }
-  }
-
   # A private zone must already be linked before PostgreSQL validates networking.
   depends_on = [azurerm_private_dns_zone_virtual_network_link.database]
 
   lifecycle {
     prevent_destroy = true
-    # Avoid undoing an Azure-managed zone switch after a successful HA failover.
-    ignore_changes = [zone, high_availability[0].standby_availability_zone]
   }
 }
 

@@ -7,24 +7,25 @@ container_image       = "YOUR_EXISTING_ACR.azurecr.io/soloai:BUILD_ID"
 model_resource_name   = "YOUR_EXISTING_AZURE_OPENAI_ACCOUNT"
 model_deployment_name = "YOUR_CHAT_DEPLOYMENT"
 
-# null derives the default Azure hostname; custom domains require separate setup.
-public_origin = null
-
 # Shared application replicas, not replicas per customer.
 min_replicas            = 1
 max_replicas            = 3
 http_concurrency_target = 20
 
-# Low-cost staging profile. This is not zone-redundant database availability.
+# One small database, no HA. Front Door Premium is required for private origins.
 database_sku        = "B_Standard_B1ms"
-database_ha_enabled = false
 initialize_schema   = true
 
 # Supply database_admin_password using TF_VAR_database_admin_password.
 # For a migrated production database set runtime_database_url via your secret
-# store and initialize_schema=false. HA example: GP_Standard_D2s_v3 + ha=true.
+# store and initialize_schema=false.
 # Set alert_email to your operations address to enable email notifications.
 tags = {
   environment = "staging"
   owner       = "founder"
 }
+
+# Tune for expected traffic/NAT users. WAF is not a billing or tenant quota.
+edge_requests_per_minute = 300
+# Before deployment the shared OpenAI account must have public network access
+# and local key authentication disabled. SoloAI uses managed identity + Private Link.

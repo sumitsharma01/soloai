@@ -1,65 +1,39 @@
+# Credential-free validation only. Apply the reviewed Terraform plan from a
+# private runner as described in docs/AZURE.md; never deploy the legacy Bicep here.
 trigger:
   branches:
     include: [main]
 pr:
   branches:
     include: [main]
-parameters:
-- name: deploy
-  type: boolean
-  default: false
-variables:
-- name: pythonVersion
-  value: '3.13'
-stages:
-- stage: Verify
-  jobs:
-  - job: Test
-    pool:
-      vmImage: ubuntu-latest
-    steps:
-    - task: UsePythonVersion@0
-      inputs:
-        versionSpec: $(pythonVersion)
-    - script: |
-        python -m pip install -r requirements.txt -r requirements-dev.txt
-        pytest -q
-        pip-audit -r requirements.txt
-      displayName: Test boundaries and scan dependencies
-    - script: az bicep build --file infra/main.bicep
-      displayName: Validate infrastructure syntax
-    - script: docker build -t soloai:$(Build.BuildId) .
-      displayName: Verify container build
-- ${{ if eq(parameters.deploy, true) }}:
-  - stage: Deploy
-    dependsOn: Verify
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-    variables:
-    - group: soloai-production
-    jobs:
-    - deployment: Azure
-      environment: soloai-production
-      pool:
-        vmImage: ubuntu-latest
-      strategy:
-        runOnce:
-          deploy:
-            steps:
-            - checkout: self
-            - task: AzureCLI@2
-              inputs:
-                azureSubscription: soloai-azure-oidc
-                scriptType: bash
-                scriptLocation: inlineScript
-                inlineScript: |
-                  set -euo pipefail
-                  az acr build --registry "$ACR_NAME" --image "soloai:$BUILD_BUILDID" .
-                  python scripts/deployment_parameters.py
-                  az deployment group create --resource-group "$RESOURCE_GROUP" --template-file infra/main.bicep --parameters @"$AGENT_TEMPDIRECTORY/soloai-parameters.json" --query properties.outputs
-              env:
-                ACR_NAME: $(acrName)
-                RESOURCE_GROUP: $(resourceGroup)
-                MODEL_RESOURCE: $(modelResource)
-                MODEL_DEPLOYMENT: $(modelDeployment)
-                PUBLIC_ORIGIN: $(publicOrigin)
-                DATABASE_PASSWORD: $(databasePassword)
+pool:
+  vmImage: ubuntu-latest
+steps:
+- task: UsePythonVersion@0
+  inputs:
+    versionSpec: '3.13'
+- script: |
+    set -euo pipefail
+    python -m pip install -r requirements.txt -r requirements-dev.txt
+    pytest -q
+    pip-audit -r requirements.txt
+  displayName: Test application and audit dependencies
+- bash: |
+    set -euo pipefail
+    mkdir -p "$AGENT_TEMPDIRECTORY/terraform-bin"
+    cd "$AGENT_TEMPDIRECTORY/terraform-bin"
+    curl -fsSLO https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_linux_amd64.zip
+    curl -fsSLO https://releases.hashicorp.com/terraform/1.15.8/terraform_1.15.8_SHA256SUMS
+    grep ' terraform_1.15.8_linux_amd64.zip$' terraform_1.15.8_SHA256SUMS | sha256sum -c -
+    unzip -o terraform_1.15.8_linux_amd64.zip
+    echo "##vso[task.prependpath]$AGENT_TEMPDIRECTORY/terraform-bin"
+  displayName: Install checksum-verified Terraform
+- script: |
+    set -euo pipefail
+    terraform -chdir=infra/terraform fmt -check -recursive
+    terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
+    terraform -chdir=infra/terraform validate
+    terraform -chdir=infra/terraform test
+  displayName: Validate private-edge infrastructure contracts
+- script: docker build -t soloai:$(Build.BuildId) .
+  displayName: Verify container build

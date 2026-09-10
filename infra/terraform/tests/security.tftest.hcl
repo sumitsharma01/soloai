@@ -32,9 +32,12 @@ override_data {
 override_data {
   target = data.azurerm_cognitive_account.shared_model
   values = {
-    name     = "soloai-model"
-    endpoint = "https://soloai-model.openai.azure.com/"
-    id       = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-soloai-test/providers/Microsoft.CognitiveServices/accounts/soloai-model"
+    kind                          = "OpenAI"
+    public_network_access_enabled = false
+    local_auth_enabled            = false
+    name                          = "soloai-model"
+    endpoint                      = "https://soloai-model.openai.azure.com/"
+    id                            = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-soloai-test/providers/Microsoft.CognitiveServices/accounts/soloai-model"
   }
 }
 
@@ -77,31 +80,49 @@ run "private_data_and_bounded_compute" {
   }
 }
 
-run "optional_ha_profile" {
+run "private_edge_with_waf" {
   command = plan
-  variables {
-    database_sku        = "GP_Standard_D2s_v3"
-    database_ha_enabled = true
-    min_replicas        = 2
-    max_replicas        = 6
-    alert_email         = "operations@example.com"
+  assert {
+    condition     = azurerm_container_app_environment.main.public_network_access == "Disabled" && azurerm_container_app_environment.main.internal_load_balancer_enabled
+    error_message = "The app origin must not be publicly reachable around the WAF."
   }
   assert {
-    condition     = azurerm_postgresql_flexible_server.main.high_availability[0].mode == "ZoneRedundant" && azurerm_container_app.main.template[0].min_replicas == 2
-    error_message = "HA profile must enable DB zone redundancy and at least two app replicas."
+    condition     = azurerm_cdn_frontdoor_profile.main.sku_name == "Premium_AzureFrontDoor" && azurerm_cdn_frontdoor_origin.main.private_link[0].target_type == "managedEnvironments"
+    error_message = "Front Door must reach the app through Premium Private Link."
   }
   assert {
-    condition     = length(azurerm_monitor_action_group.operations) == 1
-    error_message = "An explicit operations email must create an action group."
+    condition     = azurerm_cdn_frontdoor_firewall_policy.main.mode == "Prevention" && azurerm_cdn_frontdoor_firewall_policy.main.enabled
+    error_message = "WAF must actively block rather than only detect."
+  }
+  assert {
+    condition     = azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].type == "RateLimitRule" && azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].action == "Block" && azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].rate_limit_threshold == 300
+    error_message = "Default edge rate control must block excessive requests."
+  }
+  assert {
+    condition     = azurerm_cdn_frontdoor_route.main.forwarding_protocol == "HttpsOnly" && azurerm_cdn_frontdoor_route.main.https_redirect_enabled && length(azurerm_cdn_frontdoor_route.main.cache) == 0
+    error_message = "Only HTTPS may reach the origin, and authenticated content must not be cached."
+  }
+  assert {
+    condition     = contains(azurerm_cdn_frontdoor_security_policy.main.security_policies[0].firewall[0].association[0].patterns_to_match, "/*")
+    error_message = "The WAF must be associated with all application paths."
+  }
+  assert {
+    condition     = azurerm_private_dns_zone.model.name == "privatelink.openai.azure.com" && contains(azurerm_private_endpoint.model.private_service_connection[0].subresource_names, "account")
+    error_message = "Inference needs the model private endpoint and matching DNS."
   }
 }
 
-run "reject_ha_on_burstable" {
+run "scale_and_alert_without_extra_services" {
   command = plan
   variables {
-    database_ha_enabled = true
+    min_replicas = 2
+    max_replicas = 6
+    alert_email  = "operations@example.com"
   }
-  expect_failures = [var.database_ha_enabled]
+  assert {
+    condition     = azurerm_container_app.main.template[0].min_replicas == 2 && length(azurerm_monitor_action_group.operations) == 1
+    error_message = "Replica settings and an explicit alert recipient must remain configurable."
+  }
 }
 
 run "reject_inverted_scaling_limits" {
@@ -113,10 +134,42 @@ run "reject_inverted_scaling_limits" {
   expect_failures = [var.min_replicas]
 }
 
-run "reject_unencrypted_origin" {
+run "reject_invalid_edge_limit" {
   command = plan
   variables {
-    public_origin = "http://example.com"
+    edge_requests_per_minute = 0
   }
-  expect_failures = [var.public_origin]
+  expect_failures = [var.edge_requests_per_minute]
+}
+
+run "reject_public_model" {
+  command = plan
+  override_data {
+    target = data.azurerm_cognitive_account.shared_model
+    values = {
+      name                          = "soloai-model"
+      kind                          = "OpenAI"
+      endpoint                      = "https://soloai-model.openai.azure.com/"
+      id                            = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-soloai-test/providers/Microsoft.CognitiveServices/accounts/soloai-model"
+      public_network_access_enabled = true
+      local_auth_enabled            = false
+    }
+  }
+  expect_failures = [data.azurerm_cognitive_account.shared_model]
+}
+
+run "reject_key_authenticated_model" {
+  command = plan
+  override_data {
+    target = data.azurerm_cognitive_account.shared_model
+    values = {
+      name                          = "soloai-model"
+      kind                          = "OpenAI"
+      endpoint                      = "https://soloai-model.openai.azure.com/"
+      id                            = "/subscriptions/00000000-0000-0000-0000-000000000000/resourceGroups/rg-soloai-test/providers/Microsoft.CognitiveServices/accounts/soloai-model"
+      public_network_access_enabled = false
+      local_auth_enabled            = true
+    }
+  }
+  expect_failures = [data.azurerm_cognitive_account.shared_model]
 }
