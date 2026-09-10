@@ -1,0 +1,8 @@
+ContainerAppConsoleLogs_CL
+| where TimeGenerated >= ago(30d)
+| where ContainerAppName_s == '${app_name}'
+| extend e=parse_json(Log_s)
+| where e.event == 'agent.execution' and e.status in ('completed','failed') and e.usage_kind != 'simulated'
+| summarize Eligible=count(), Failed=countif(e.status=='failed')
+| extend Success_percent=iff(Eligible==0,real(null),100.0*(Eligible-Failed)/Eligible), Allowed_failures=Eligible*0.01
+| extend Remaining_error_budget=Allowed_failures-Failed, Burn_rate=iff(Eligible==0,real(null),Failed/(Eligible*0.01))

@@ -1,0 +1,6 @@
+ContainerAppConsoleLogs_CL
+| where ContainerAppName_s == '${app_name}'
+| extend e=parse_json(Log_s)
+| where e.event == 'agent.execution'
+| summarize Executions=count(), Failed=countif(e.status=='failed'), P95_ms=percentile(todouble(e.latency_ms),95), Provider_P95_ms=percentile(todouble(e.provider_ms),95), Reported_tokens=sumif(tolong(e.tokens),e.usage_kind=='reported'), Reserved_tokens=sumif(tolong(e.tokens),e.usage_kind=='reserved'), Max_allowance_percent=max(todouble(e.allowance_percent)) by bin(TimeGenerated,5m), Agent=tostring(e.agent)
+| extend Tokens_per_minute=Reported_tokens/5.0

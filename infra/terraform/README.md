@@ -57,3 +57,7 @@ Seven mocked plan tests check private data access, private ingress, WAF binding/
 The backend, tfvars, saved plans and state must remain private. `sensitive=true` redacts output; it does **not** remove secrets from state. The committed lockfile includes Linux/macOS provider checksums.
 
 **Upgrading the previous template:** see [migration notes](../../docs/AZURE.md#upgrading-the-earlier-layout). Internal Container Apps networking can require replacement. The old Bicep template/pipeline are legacy references and must not manage this environment.
+
+Monitoring queries are segregated in `queries/`, Workbook configuration in
+`dashboard.tf`, and collection/alerts in `monitoring.tf`. See the
+[operations guide](../../docs/monitoring.md) for SLO definitions and deployment checks.

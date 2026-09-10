@@ -1,0 +1,4 @@
+AzureMetrics
+| where ResourceId in~ ('${app_id}', '${database_id}')
+| summarize Average=avg(Average), Peak=max(Maximum) by bin(TimeGenerated,5m), Resource, MetricName, UnitName
+| order by TimeGenerated desc

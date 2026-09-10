@@ -1,0 +1,6 @@
+ContainerAppConsoleLogs_CL
+| where ContainerAppName_s == '${app_name}'
+| extend e=parse_json(Log_s)
+| where e.event == 'http.request'
+| summarize Requests=count(), Errors=countif(toint(e.status_code)>=500), P50_ms=percentile(todouble(e.latency_ms),50), P95_ms=percentile(todouble(e.latency_ms),95), P99_ms=percentile(todouble(e.latency_ms),99), Rejected=countif(toint(e.status_code)==429) by bin(TimeGenerated,5m), Route=tostring(e.route)
+| extend Requests_per_second=Requests/300.0

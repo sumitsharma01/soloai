@@ -10,6 +10,7 @@ from sqlalchemy import create_engine, text
 import httpx
 from starlette.concurrency import run_in_threadpool
 from app import foundry
+from app.telemetry import emit, RequestTelemetry
 
 PROD = os.getenv('SOLOAI_ENV') == 'production'
 DATABASE = os.getenv('DATABASE_URL', 'sqlite:///./soloai.db')
@@ -153,6 +154,7 @@ async def execute(b,t):
         if not ok: raise HTTPException(429,'Usage allowance or request limit reached')
         c.execute(text('INSERT INTO executions VALUES (:id,:t,:a,\'running\',:r,0,:now)'),{'id':run,'t':t,'a':a,'r':reserve,'now':now})
     status='completed';used=reserve;reply='';needs_human=False
+    provider_start=time.monotonic();provider_ms=0;usage_kind='reserved'
     try:
         endpoint=os.getenv('AZURE_OPENAI_ENDPOINT')
         if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT'):
@@ -169,17 +171,21 @@ async def execute(b,t):
         else:
             reply=('Subject: Your support request\n\n' if a=='email-support' else '')+'Thanks for reaching out! '+(cfg['guidance'] or 'Please contact our team for help with this request.')+'\n\n[Local demo: this is a simulated response.]'
             used=min(reserve, len(reply.encode())+len(b.content.encode()))
+        provider_ms=round((time.monotonic()-provider_start)*1000)
+        usage_kind='reported' if (endpoint or os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT')) else 'simulated'
         with engine.connect() as c:
             live=c.execute(text('SELECT enabled FROM agents WHERE tenant=:t AND id=:a'),{'t':t,'a':a}).scalar_one()
             current=c.execute(text('SELECT stopped FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
         if not live or current!=epoch: status='stopped';reply=''
     except Exception:
+        provider_ms=round((time.monotonic()-provider_start)*1000)
         status='failed' # No prompts, provider errors or response content enter logs.
     finally:
         with engine.begin() as c:
             c.execute(text('UPDATE tenants SET used=used+:adjustment WHERE id=:t'),{'adjustment':used-reserve,'t':t})
             c.execute(text('UPDATE executions SET status=:s,tokens=:u,latency=:ms WHERE id=:id AND tenant=:t'),{'s':status,'u':used,'ms':int((time.monotonic()-start)*1000),'id':run,'t':t})
-        print(json.dumps({'event':'agent.execution','status':status,'agent':a,'latency_ms':int((time.monotonic()-start)*1000)}),flush=True)
+            allowance=c.execute(text('SELECT used*100.0/budget FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
+        emit('agent.execution',status=status,agent=a,latency_ms=round((time.monotonic()-start)*1000),provider_ms=provider_ms,tokens=used,usage_kind=usage_kind,allowance_percent=round(allowance,2))
     if status!='completed': raise HTTPException(503,'Execution '+status)
     return {'id':run,'agent':a,'reply':reply,'draft':a=='email-support','tokens':used,'needs_human':needs_human}
 @app.post('/api/events')
@@ -193,3 +199,6 @@ def health():
 app.mount('/static',StaticFiles(directory=Path(__file__).parent/'static'),name='static')
 @app.get('/')
 def index():return FileResponse(Path(__file__).parent/'static/index.html')
+
+# Outermost user middleware includes origin and body-size rejections.
+app.add_middleware(RequestTelemetry)

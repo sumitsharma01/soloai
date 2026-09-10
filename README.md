@@ -138,3 +138,9 @@ docs/                  Architecture, deployment and actual screenshots
 ## Next release
 
 Verified identity and recovery → least-privilege runtime role and RLS → Gmail/Outlook OAuth with draft-only scopes → controlled customer APIs → durable jobs and reconciliation → marketplace package validation. Add these in response to real usage, without changing the founder's simple install-and-enable experience.
+
+### Operations monitoring
+
+[Monitoring guide](docs/monitoring.md): Azure Monitor Workbook for throughput,
+P95/P99 latency, execution error budget, total token utilization and infrastructure
+metrics, with three bounded alerts. Reuses Log Analytics; no Prometheus/Grafana server.
