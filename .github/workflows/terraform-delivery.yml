@@ -1,0 +1,132 @@
+name: Terraform delivery
+on:
+  pull_request:
+    branches: [main]
+    paths: ['infra/terraform/**', 'scripts/ci/**', '.github/workflows/terraform-delivery.yml']
+  push:
+    branches: [main]
+    paths: ['infra/terraform/**', 'scripts/ci/**', '.github/workflows/terraform-delivery.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+# Serialize this state across PR plans and deployments. Never interrupt an apply.
+concurrency:
+  group: soloai-terraform-staging
+  cancel-in-progress: false
+env:
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  ARM_USE_OIDC: 'true'
+  ARM_USE_AZUREAD: 'true'
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_VAR_subscription_id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+  TF_STATE_ACCOUNT: ${{ vars.TF_STATE_ACCOUNT }}
+  TF_STATE_CONTAINER: ${{ vars.TF_STATE_CONTAINER }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY }}
+  TF_CONFIG_JSON: ${{ vars.TF_CONFIG_JSON }}
+jobs:
+  plan:
+    # Opt-in prevents dispatch to an unconfigured runner. Fork code never enters it.
+    if: >-
+      vars.TERRAFORM_DELIVERY_ENABLED == 'true' &&
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    runs-on: [self-hosted, linux, x64, soloai-private]
+    environment: terraform-plan
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_PLAN_CLIENT_ID }}
+      TF_VAR_database_admin_password: ${{ secrets.TF_DATABASE_ADMIN_PASSWORD }}
+      PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
+    defaults:
+      run:
+        working-directory: infra/terraform
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.15.8'
+          terraform_wrapper: false
+      - run: bash ../../scripts/ci/terraform-init.sh
+      - run: terraform fmt -check -recursive && terraform validate && terraform test
+      - name: Generate plan without exposing values in public logs
+        run: |
+          if ! terraform plan -input=false -lock-timeout=5m -out=review.tfplan > plan.log 2>&1; then
+            echo 'Plan failed. Operator must inspect Azure access, inputs and private connectivity; raw output withheld.'
+            exit 1
+          fi
+          terraform show -json review.tfplan > plan.json
+          python3 - <<'PY'
+          import json, os, collections
+          plan=json.load(open('plan.json'))
+          counts=collections.Counter('/'.join(r['change']['actions']) for r in plan.get('resource_changes',[]))
+          with open(os.environ['GITHUB_STEP_SUMMARY'],'a') as out:
+              out.write('## Terraform plan\nCommit: `'+os.environ['GITHUB_SHA']+'`\n\n')
+              for action,count in sorted(counts.items()): out.write(f'- {action}: {count}\n')
+              out.write('\nDetailed plan is encrypted. Review it before approving deployment.\n')
+          PY
+          test -n "$PLAN_ENCRYPTION_KEY"
+          openssl enc -aes-256-cbc -salt -pbkdf2 -iter 200000 -in review.tfplan -out plan.enc -pass env:PLAN_ENCRYPTION_KEY
+          sha256sum plan.enc > plan.enc.sha256
+      - uses: actions/upload-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: |
+            infra/terraform/plan.enc
+            infra/terraform/plan.enc.sha256
+          retention-days: 1
+          if-no-files-found: error
+      - name: Remove local state and secret-bearing files
+        if: always()
+        run: rm -rf .terraform ci.auto.tfvars.json review.tfplan plan.json plan.log plan.enc plan.enc.sha256
+  apply:
+    needs: plan
+    if: github.event_name != 'pull_request' && github.ref == 'refs/heads/main'
+    runs-on: [self-hosted, linux, x64, soloai-private]
+    # Configure required reviewers here: approval occurs AFTER the new main plan.
+    environment: terraform-staging
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+      PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
+    defaults:
+      run:
+        working-directory: infra/terraform
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.15.8'
+          terraform_wrapper: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: terraform-plan-${{ github.run_id }}-${{ github.run_attempt }}
+          path: infra/terraform
+      - run: bash ../../scripts/ci/terraform-init.sh
+      - name: Apply the exact approved main-branch plan
+        run: |
+          sha256sum -c plan.enc.sha256
+          openssl enc -d -aes-256-cbc -pbkdf2 -iter 200000 -in plan.enc -out review.tfplan -pass env:PLAN_ENCRYPTION_KEY
+          if ! terraform apply -input=false -lock-timeout=5m review.tfplan > apply.log 2>&1; then
+            echo 'Apply failed; inspect Azure and current state before retrying. Raw output withheld.'
+            exit 1
+          fi
+          echo 'Applied the approved saved plan.' >> "$GITHUB_STEP_SUMMARY"
+      - name: Check public application health
+        run: |
+          url=$(terraform output -raw application_url)
+          curl --fail --silent --show-error --retry 5 --retry-delay 10 --max-time 30 "$url/health"
+      - name: Remove local state and secret-bearing files
+        if: always()
+        run: rm -rf .terraform ci.auto.tfvars.json review.tfplan plan.enc plan.enc.sha256 apply.log

@@ -227,3 +227,9 @@ Verified identity and recovery → least-privilege runtime role and RLS → Gmai
 [Monitoring guide](docs/monitoring.md): Azure Monitor Workbook for throughput,
 P95/P99 latency, execution error budget, total token utilization and infrastructure
 metrics, with three bounded alerts. Reuses Log Analytics; no Prometheus/Grafana server.
+
+### Terraform CI/CD
+
+[Pipeline setup](docs/CICD.md): reviewed PR plan → merge → fresh saved plan → protected
+environment approval → Azure apply → health check. Uses OIDC and a private runner.
+Enable `TERRAFORM_DELIVERY_ENABLED` only after configuring identities, state and approvals.
