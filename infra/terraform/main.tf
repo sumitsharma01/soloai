@@ -25,7 +25,6 @@ locals {
 
   # Subnets are derived, so they remain within the chosen VNet and do not overlap.
   apps_cidr      = cidrsubnet(var.vnet_address_space, 7, 0) # first /23
-  database_cidr  = cidrsubnet(var.vnet_address_space, 8, 2) # following /24
   endpoints_cidr = cidrsubnet(var.vnet_address_space, 8, 3) # following /24
 
   # The Front Door endpoint is the only public origin. It is independent of the
@@ -34,5 +33,5 @@ locals {
 
   # For staging only. Replace with a migrated runtime role for production.
   # urlencode protects delimiters in generated passwords; secrets stay in state.
-  database_url = var.runtime_database_url != null ? var.runtime_database_url : "postgresql+psycopg://soloadmin:${urlencode(var.database_admin_password)}@${azurerm_postgresql_flexible_server.main.fqdn}:5432/soloai?sslmode=require"
+  database_url = var.runtime_database_url != null ? var.runtime_database_url : "mssql+pyodbc://soloadmin:${urlencode(var.database_admin_password)}@${azurerm_mssql_server.main.fully_qualified_domain_name}:1433/soloai?driver=ODBC+Driver+18+for+SQL+Server&Encrypt=yes&TrustServerCertificate=no"
 }

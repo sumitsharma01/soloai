@@ -8,7 +8,7 @@ The supported path is **Terraform** under `infra/terraform`. Both CI pipelines v
 - The model account must have public network access and local API-key authentication disabled. Coordinate this with its owner if other clients use it. They also need private connectivity and Entra ID authentication. Terraform checks these settings and creates the private endpoint/DNS; it does not change the account's other settings.
 - An existing protected Azure Blob state container: Entra ID access, restricted network, versioning/soft delete, separate state key per environment. State and plan files contain secrets.
 - A private runner with Azure CLI/Terraform, routing and DNS access to the new private services. The provisioning principal needs resource write/role-assignment rights, state Blob Data Contributor, and authority to create private connections to the shared account. The app gets only AcrPull, model inference and secret-read roles.
-- Register `Microsoft.Cdn`, `Microsoft.App`, `Microsoft.Network`, `Microsoft.KeyVault`, `Microsoft.DBforPostgreSQL`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.ContainerRegistry` and `Microsoft.CognitiveServices`.
+- Register `Microsoft.Cdn`, `Microsoft.App`, `Microsoft.Network`, `Microsoft.KeyVault`, `Microsoft.Sql`, `Microsoft.ManagedIdentity`, `Microsoft.OperationalInsights`, `Microsoft.Insights`, `Microsoft.ContainerRegistry` and `Microsoft.CognitiveServices`.
 
 Use a region supporting Front Door Private Link for Container Apps. Front Door Premium is required; it adds a baseline charge even with little traffic. There are also private-endpoint and service charges. Review those before applying.
 

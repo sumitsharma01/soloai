@@ -7,7 +7,7 @@ create an Application Insights component.
 
 ## What is included
 
-- Infrastructure metrics exported from Container Apps and PostgreSQL into AzureMetrics.
+- Infrastructure metrics exported from Container Apps and Azure SQL into AzureMetrics.
 - HTTP requests/second, P50/P95/P99 latency, 5xx errors and 429 rejections by route template.
 - Agent executions, failures, end-to-end P95 and provider-adapter P95 latency.
 - Reported total tokens/minute, separately labelled uncertain reservations, and maximum
@@ -67,7 +67,7 @@ flowchart LR
   Agent[Agent executions and usage] --> Events
   Events --> ACA[Container Apps log collection]
   ACA --> LAW[Existing Log Analytics workspace]
-  Infra[Container Apps and PostgreSQL metrics] --> LAW
+  Infra[Container Apps and Azure SQL metrics] --> LAW
   LAW --> Workbook[Operations Workbook]
   LAW --> Alerts[Three bounded alerts]
   Alerts --> Operator[Optional configured operator email]

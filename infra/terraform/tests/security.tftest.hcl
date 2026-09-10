@@ -55,7 +55,7 @@ run "private_data_and_bounded_compute" {
   command = plan
 
   assert {
-    condition     = !azurerm_postgresql_flexible_server.main.public_network_access_enabled && !azurerm_key_vault.main.public_network_access_enabled
+    condition     = !azurerm_mssql_server.main.public_network_access_enabled && !azurerm_key_vault.main.public_network_access_enabled
     error_message = "Database and vault must not allow public network access."
   }
   assert {
@@ -172,4 +172,16 @@ run "reject_key_authenticated_model" {
     }
   }
   expect_failures = [data.azurerm_cognitive_account.shared_model]
+}
+
+run "sql_free_allowance_stops_at_limit" {
+  command = plan
+  assert {
+    condition     = jsondecode(azurerm_resource_group_template_deployment.database.template_content).resources[0].properties.useFreeLimit == true && jsondecode(azurerm_resource_group_template_deployment.database.template_content).resources[0].properties.freeLimitExhaustionBehavior == "AutoPause"
+    error_message = "The database must request the free offer and stop at the monthly limit."
+  }
+  assert {
+    condition     = azurerm_mssql_server.main.minimum_tls_version == "1.2" && !azurerm_mssql_server.main.public_network_access_enabled
+    error_message = "SQL must require TLS and private access."
+  }
 }

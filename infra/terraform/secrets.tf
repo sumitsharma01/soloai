@@ -46,13 +46,13 @@ resource "azurerm_key_vault_secret" "database_url" {
   name         = "database-url"
   value        = local.database_url
   key_vault_id = azurerm_key_vault.main.id
-  content_type = "PostgreSQL connection URL"
+  content_type = "Azure SQL connection URL"
   tags         = local.tags
 
   depends_on = [
     azurerm_role_assignment.terraform_secret_writer,
     azurerm_private_endpoint.vault,
     azurerm_private_dns_zone_virtual_network_link.vault,
-    azurerm_postgresql_flexible_server_database.soloai,
+    azurerm_resource_group_template_deployment.database,
   ]
 }

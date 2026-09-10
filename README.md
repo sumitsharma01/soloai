@@ -23,7 +23,7 @@ Real screenshots of the running local application using synthetic Acme Studio da
 
 [Login screenshot](docs/screenshots/login.png)
 
-### Current platform and Grafana — actual local monitoring
+### Current platform and Grafana :  actual local monitoring
 
 | Platform | Grafana |
 |---|---|
@@ -180,13 +180,25 @@ export AZURE_OPENAI_DEPLOYMENT=YOUR-DEPLOYMENT-NAME
 
 For local Azure access, sign in with Azure CLI and grant the principal the **Cognitive Services OpenAI User** role on that resource. Azure deployment uses the app's managed identity. The same model serves every customer with separate tenant context. The chosen deployment must support the OpenAI v1 chat-completions API and its output-token parameter.
 
-`SOLOAI_ENV=production` rejects SQLite and missing model configuration; cookies become Secure. PostgreSQL and the exact `PUBLIC_ORIGIN` are required. Follow [Azure deployment](docs/AZURE.md), including reduction of bootstrap database privileges, before using real customer data. Model pricing, quota and resource costs are not bundled or assumed.
+`SOLOAI_ENV=production` rejects SQLite and missing model configuration; cookies become Secure. Azure SQL and the exact `PUBLIC_ORIGIN` are required. Follow [Azure deployment](docs/AZURE.md), including reduction of bootstrap database privileges, before using real customer data. Model pricing, quota and resource costs are not bundled or assumed.
+
+## Database costs and availability
+
+Terraform now creates Azure SQL Database with the free allowance enabled and
+`AutoPause` when that allowance runs out. The allowance renews monthly. When the
+database is paused at the limit, login, agent settings and agent execution cannot
+work until it becomes available again. See [database setup](docs/AZURE-SQL.md).
+
+> **Note:** Front Door Premium and its WAF are still paid services in this architecture.
+> The free database offer does not cover Front Door, Container Apps, private endpoints,
+> Key Vault, monitoring or Foundry tokens. Cloudflare was discussed as an alternative
+> but has not replaced Front Door in Terraform.
 
 ## Terraform and architecture guide
 
-**[Terraform IaC →](infra/terraform/README.md)** — one root configuration, split into networking, database, identity, secrets, application and monitoring files, with comments, input validation, remote-state examples and mocked security tests.
+**[Terraform IaC →](infra/terraform/README.md)** :  one root configuration, split into networking, database, identity, secrets, application and monitoring files, with comments, input validation, remote-state examples and mocked security tests.
 
-**[Architecture diagrams →](docs/ARCHITECTURE.md)** — Azure services and network boundaries, concurrent customer signup/agent activation, shared-model tenant isolation, event routing, failure behavior, reliability and scaling decisions.
+**[Architecture diagrams →](docs/ARCHITECTURE.md)** :  Azure services and network boundaries, concurrent customer signup/agent activation, shared-model tenant isolation, event routing, failure behavior, reliability and scaling decisions.
 
 Terraform is the supported private-edge deployment. Front Door Premium + WAF is the public entry point; Container Apps, database, vault and model access are private. Both pipelines validate only; use the reviewed-plan deployment runbook. The old Bicep files are legacy references.
 
@@ -196,13 +208,13 @@ Terraform is the supported private-edge deployment. Front Door Premium + WAF is 
 flowchart LR
   I[Internet] --> F[Front Door Premium + WAF]
   F -->|Private Link| A[Private Container Apps]
-  A --> P[(Private PostgreSQL)]
+  A --> P[(Private Azure SQL)]
   A --> K[Private Key Vault]
   A --> M[Private shared Foundry model]
   A --> L[Log Analytics]
 ```
 
-One service plus PostgreSQL keeps the MVP small. Agent activation changes database configuration, not infrastructure. PostgreSQL coordinates limits across replicas. There are no per-customer containers, per-customer models, Kubernetes clusters or speculative workflow builders. [Architecture, tradeoffs and scaling path](docs/ARCHITECTURE.md).
+One service plus Azure SQL keeps the MVP small. Agent activation changes database configuration, not infrastructure. Azure SQL coordinates limits across replicas. There are no per-customer containers, per-customer models, Kubernetes clusters or speculative workflow builders. [Architecture, tradeoffs and scaling path](docs/ARCHITECTURE.md).
 
 ## Tests and verification
 

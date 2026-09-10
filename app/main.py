@@ -6,7 +6,9 @@ from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, text as sql_text
+from sqlalchemy.pool import NullPool
+from app.sqlserver import statement
 import httpx
 from starlette.concurrency import run_in_threadpool
 from app import foundry
@@ -14,9 +16,14 @@ from app.telemetry import emit, RequestTelemetry
 
 PROD = os.getenv('SOLOAI_ENV') == 'production'
 DATABASE = os.getenv('DATABASE_URL', 'sqlite:///./soloai.db')
-if PROD and (not DATABASE.startswith('postgresql') or not (os.getenv('AZURE_OPENAI_ENDPOINT') or os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT'))):
-    raise RuntimeError('Production requires PostgreSQL and Azure Foundry configuration')
-engine = create_engine(DATABASE, pool_pre_ping=True, **({'connect_args': {'check_same_thread': False}} if DATABASE.startswith('sqlite') else {}))
+if PROD and (not DATABASE.startswith(('postgresql','mssql+pyodbc')) or not (os.getenv('AZURE_OPENAI_ENDPOINT') or os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT'))):
+    raise RuntimeError('Production requires PostgreSQL or Azure SQL and Azure Foundry configuration')
+IS_SQLSERVER=DATABASE.startswith('mssql')
+if IS_SQLSERVER:
+    import pyodbc
+    pyodbc.pooling=False
+def text(sql): return sql_text(statement(sql) if IS_SQLSERVER else sql)
+engine = create_engine(DATABASE, pool_pre_ping=True, **({'poolclass':NullPool} if IS_SQLSERVER else {}), **({'connect_args': {'check_same_thread': False}} if DATABASE.startswith('sqlite') else {}))
 from app.packages import PACKAGES
 
 def digest(s): return hashlib.sha256(s.encode()).hexdigest()
@@ -201,6 +208,9 @@ async def execute(b,t):
 async def event(b:Event,t=Depends(api_tenant)): return await execute(b,t)
 @app.post('/api/try')
 async def trial(b:Event,t=Depends(tenant)): return await execute(b,t)
+@app.get('/live')
+def live(): return {'status':'alive'}
+
 @app.get('/health')
 def health():
     with engine.connect() as c:c.execute(text('SELECT 1'))

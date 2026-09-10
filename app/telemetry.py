@@ -30,6 +30,6 @@ class RequestTelemetry:
         finally:
             # Route templates only: raw paths and query strings may contain secrets.
             route = getattr(scope.get('route'), 'path', 'unmatched')
-            if route != '/health':
+            if route not in ('/health','/live'):
                 emit('http.request', route=route, status_code=status,
                      latency_ms=round((time.monotonic()-start)*1000))

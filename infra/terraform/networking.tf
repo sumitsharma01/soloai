@@ -1,5 +1,5 @@
 # Azure VNet is the equivalent of a VPC. Only the application HTTPS ingress is
-# internet-facing. PostgreSQL and Key Vault are reached through private addresses.
+# internet-facing. Azure SQL and Key Vault are reached through private addresses.
 resource "azurerm_virtual_network" "main" {
   name                = "${var.name_prefix}-vnet"
   location            = local.location
@@ -22,20 +22,6 @@ resource "azurerm_subnet" "apps" {
   }
 }
 
-resource "azurerm_subnet" "database" {
-  name                 = "postgres"
-  resource_group_name  = data.azurerm_resource_group.existing.name
-  virtual_network_name = azurerm_virtual_network.main.name
-  address_prefixes     = [local.database_cidr]
-  delegation {
-    name = "postgresql"
-    service_delegation {
-      name    = "Microsoft.DBforPostgreSQL/flexibleServers"
-      actions = ["Microsoft.Network/virtualNetworks/subnets/join/action"]
-    }
-  }
-}
-
 resource "azurerm_subnet" "endpoints" {
   name                              = "private-endpoints"
   resource_group_name               = data.azurerm_resource_group.existing.name
@@ -44,10 +30,9 @@ resource "azurerm_subnet" "endpoints" {
   private_endpoint_network_policies = "Disabled"
 }
 
-# PostgreSQL VNet integration requires a linked private zone ending in
-# postgres.database.azure.com. Key Vault uses its standard Private Link zone.
+# SQL and Key Vault use private endpoints with linked DNS zones.
 resource "azurerm_private_dns_zone" "database" {
-  name                = "${var.name_prefix}.postgres.database.azure.com"
+  name                = "privatelink.database.windows.net"
   resource_group_name = data.azurerm_resource_group.existing.name
   tags                = local.tags
 }

@@ -18,7 +18,7 @@ variable "name_prefix" {
   default     = "soloai-dev"
   validation {
     condition     = can(regex("^[a-z][a-z0-9-]{2,11}$", var.name_prefix))
-    error_message = "Use 3–12 lowercase letters, numbers or hyphens, starting with a letter."
+    error_message = "Use 3-12 lowercase letters, numbers or hyphens, starting with a letter."
   }
 }
 
@@ -56,7 +56,7 @@ variable "vnet_address_space" {
 
 # ---- Database: one small server, 32 GiB, seven-day backups ----
 variable "database_admin_password" {
-  description = "Bootstrap PostgreSQL administrator password. Sensitive, but still present in Terraform state."
+  description = "Bootstrap Azure SQL administrator password. Sensitive, but still present in Terraform state."
   type        = string
   sensitive   = true
   validation {
@@ -65,20 +65,14 @@ variable "database_admin_password" {
   }
 }
 
-variable "database_sku" {
-  description = "Flexible Server size. Start small; raise this after measuring database load."
-  type        = string
-  default     = "B_Standard_B1ms"
-}
-
 variable "runtime_database_url" {
   description = "Optional URL for a pre-provisioned least-privilege DB role. Null uses the bootstrap administrator for staging only."
   type        = string
   sensitive   = true
   default     = null
   validation {
-    condition     = var.runtime_database_url == null ? true : startswith(var.runtime_database_url, "postgresql+psycopg://") && can(regex("sslmode=(require|verify-ca|verify-full)", var.runtime_database_url))
-    error_message = "Use a postgresql+psycopg:// URL with an explicit TLS sslmode."
+    condition     = var.runtime_database_url == null ? true : startswith(var.runtime_database_url, "mssql+pyodbc://") && can(regex("Encrypt=yes", var.runtime_database_url)) && can(regex("TrustServerCertificate=no", var.runtime_database_url))
+    error_message = "Use a mssql+pyodbc:// URL with Encrypt=yes and TrustServerCertificate=no."
   }
 }
 

@@ -15,8 +15,8 @@ output "virtual_network_id" {
 }
 
 output "database_fqdn" {
-  description = "Private PostgreSQL hostname for migration/restore operations."
-  value       = azurerm_postgresql_flexible_server.main.fqdn
+  description = "Private Azure SQL hostname for migration/restore operations."
+  value       = azurerm_mssql_server.main.fully_qualified_domain_name
 }
 
 output "key_vault_id" {

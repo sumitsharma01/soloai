@@ -70,7 +70,7 @@ resource "azurerm_container_app" "main" {
       cpu    = 0.5
       memory = "1Gi"
 
-      # Keep operator settings explicit. Tenant settings live in PostgreSQL.
+      # Keep operator settings explicit. Tenant settings live in Azure SQL.
       env {
         name  = "SOLOAI_ENV"
         value = "production"
@@ -100,12 +100,12 @@ resource "azurerm_container_app" "main" {
         value = var.model_deployment_name
       }
 
-      # Readiness checks the DB; a DB outage removes traffic without endlessly
-      # restarting containers. TCP liveness checks only that the process listens.
+      # Readiness checks the process without waking a paused SQL database.
+      # /health remains an on-demand database check for deployment verification.
       readiness_probe {
         transport               = "HTTP"
         port                    = 8000
-        path                    = "/health"
+        path                    = "/live"
         initial_delay           = 10
         interval_seconds        = 10
         failure_count_threshold = 3
@@ -125,6 +125,7 @@ resource "azurerm_container_app" "main" {
     azurerm_role_assignment.model_inference,
     azurerm_role_assignment.app_secret_reader,
     azurerm_private_endpoint.model,
+    azurerm_private_endpoint.database,
     azurerm_private_dns_zone_virtual_network_link.model,
   ]
 }

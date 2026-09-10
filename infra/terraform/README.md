@@ -4,7 +4,7 @@
 Internet
   → Front Door Premium + WAF (inspect, rate-limit, block)
   → Private Link → Container Apps (no public access)
-  → private PostgreSQL / private Key Vault / private shared Azure OpenAI
+  → private Azure SQL / private Key Vault / private shared Azure OpenAI
 ```
 
 **One environment, one Terraform state, one shared application.** Enabling a customer's agent changes a database row, not infrastructure. These files are one root module; Terraform handles dependency order.
@@ -16,8 +16,8 @@ Internet
 | `main.tf`, `variables.tf`, `versions.tf` | Existing resources, inputs, naming and provider/state setup |
 | `edge.tf` | Public Front Door URL, WAF rules, HTTPS route and private origin |
 | `networking.tf` | VNet, separate app/database/endpoint subnets, private DNS |
-| `application.tf` | One application with 1–3 replicas and health checks |
-| `database.tf` | One small private PostgreSQL server; 32 GiB and seven-day backups |
+| `application.tf` | One application with 1-3 replicas and health checks |
+| `database.tf` | One small private Azure SQL server; 32 GB free allowance and stop-at-limit behavior |
 | `ai.tf` | Private connection to the existing shared OpenAI model account |
 | `identity.tf`, `secrets.tf` | Managed identity, scoped roles and private Key Vault |
 | `monitoring.tf` | One log workspace and one failure alert; optional email recipient |
@@ -50,7 +50,7 @@ Seven mocked plan tests check private data access, private ingress, WAF binding/
 
 - `edge_requests_per_minute`: default 300 per socket IP. WAF counters are approximate; users behind one NAT share an IP. Tune with legitimate traffic.
 - `min_replicas` / `max_replicas`: defaults 1 / 3, shared by all tenants.
-- `database_sku`: small starter size. No HA or regional failover in this first version.
+- Database size is fixed to the free-offer configuration. It pauses at the monthly limit.
 - `alert_email`: optional operations destination; otherwise the alert remains portal-visible.
 - `runtime_database_url` and `initialize_schema`: production uses a migrated least-privilege role with startup schema creation disabled. The default admin URL is for isolated staging only.
 

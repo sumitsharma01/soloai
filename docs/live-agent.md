@@ -68,7 +68,7 @@ provisions a private direct-model backend; it does not provision this Foundry Ag
 Service project or its private networking. Before deploying this mode, configure
 project network access from Container Apps and grant its managed identity only the
 required read/invoke project permissions. Do not put developer CLI credentials into
-a container. PostgreSQL and the documented production hardening remain required.
+a container. Azure SQL and the documented production hardening remain required.
 
 API reference: [Foundry Responses](https://ai.azure.com/api-reference/responses/create-response/).
 

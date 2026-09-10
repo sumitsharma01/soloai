@@ -67,7 +67,7 @@ resource "azurerm_monitor_scheduled_query_rules_alert_v2" "failures" {
 resource "azurerm_monitor_diagnostic_setting" "infrastructure" {
   for_each = {
     app      = azurerm_container_app.main.id
-    database = azurerm_postgresql_flexible_server.main.id
+    database = local.sql_database_id
   }
   name                       = "soloai-platform-metrics"
   target_resource_id         = each.value

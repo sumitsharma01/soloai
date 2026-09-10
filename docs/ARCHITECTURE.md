@@ -10,9 +10,9 @@ flowchart TB
     edge["Azure Front Door Premium + WAF<br/>HTTPS · managed attack rules · IP rate limit / block"]
     privateOrigin["Front Door managed Private Link<br/>Explicit origin connection approval"]
 
-    subgraph vnet["SoloAI VNet — private application and data paths"]
-      app["Azure Container Apps<br/>Internal environment; public access disabled<br/>One application · 1–3 shared replicas"]
-      db[("Private PostgreSQL<br/>Tenants · Agent settings · Usage · Sessions")]
+    subgraph vnet["SoloAI VNet :  private application and data paths"]
+      app["Azure Container Apps<br/>Internal environment; public access disabled<br/>One application · 1-3 shared replicas"]
+      db[("Private Azure SQL<br/>Tenants · Agent settings · Usage · Sessions")]
       vaultEndpoint["Private endpoint + DNS"]
       modelEndpoint["Private endpoint + DNS"]
     end
@@ -37,7 +37,7 @@ flowchart TB
 
 **Only Front Door accepts public application traffic.** WAF rules apply to every route. HTTPS is enforced and CDN response caching is disabled. Container Apps cannot be reached directly from the internet around the WAF. Connections inside an authorized private network are a separate trust boundary; Front Door is not a firewall between all internal services.
 
-The app uses private DNS/TLS for PostgreSQL, Key Vault and model access. The AI account owner disables public and API-key access; Terraform refuses an account that does not meet those conditions. No model key is supplied to the application. ACR is reused with identity-based pulls; this minimal stack does not add an ACR private endpoint or an outbound Azure Firewall.
+The app uses private DNS/TLS for Azure SQL, Key Vault and model access. The AI account owner disables public and API-key access; Terraform refuses an account that does not meet those conditions. No model key is supplied to the application. ACR is reused with identity-based pulls; this minimal stack does not add an ACR private endpoint or an outbound Azure Firewall.
 
 ## Keep only what is needed
 
@@ -45,7 +45,7 @@ The app uses private DNS/TLS for PostgreSQL, Key Vault and model access. The AI 
 |---|---|
 | Front Door Premium + WAF | Required public edge, managed request blocking, rate control and private origin |
 | Container Apps | One service for dashboard, login, API and orchestrator; scale replicas without managing servers |
-| PostgreSQL | Persistent tenant configuration, authentication metadata and shared usage counters |
+| Azure SQL | Persistent tenant configuration, authentication metadata and shared usage counters |
 | Shared Azure OpenAI deployment | One inference backend for every tenant |
 | Managed identity + Key Vault | Scoped Azure access and private secret storage |
 | VNet, private endpoints and DNS | Private app/data/model connectivity |
@@ -61,7 +61,7 @@ sequenceDiagram
     participant User as Internet client
     participant Edge as Front Door + WAF
     participant App as SoloAI Container App
-    participant DB as Private PostgreSQL
+    participant DB as Private Azure SQL
     participant AI as Private shared Foundry model
 
     User->>Edge: HTTPS request
@@ -98,7 +98,7 @@ flowchart LR
     M -->|"Draft B"| RB["Originating request B"]
 ```
 
-Registration creates one tenant and two disabled agent rows. Logging in creates a session; enabling an agent updates its row. **None of these actions runs Terraform or deploys a new Azure model/container.** Any app replica can handle the next request because sessions, configuration and counters are shared in PostgreSQL.
+Registration creates one tenant and two disabled agent rows. Logging in creates a session; enabling an agent updates its row. **None of these actions runs Terraform or deploys a new Azure model/container.** Any app replica can handle the next request because sessions, configuration and counters are shared in Azure SQL.
 
 | Setting | What is separate today? |
 |---|---|
@@ -111,17 +111,17 @@ Registration creates one tenant and two disabled agent rows. Logging in creates 
 | Usage and executions | Separate tenant counters and metadata rows |
 | Model deployment | Same endpoint and shared Azure quota |
 
-Future connectors must store credentials and permissions with a tenant owner, using OAuth and encrypted tokens. Sharing a model must never imply sharing mailbox credentials or customer context. Current isolation is enforced by application queries, not PostgreSQL RLS or individual Azure identities. This remains a security boundary that needs testing and further hardening before public production.
+Future connectors must store credentials and permissions with a tenant owner, using OAuth and encrypted tokens. Sharing a model must never imply sharing mailbox credentials or customer context. Current isolation is enforced by application queries, not Azure SQL RLS or individual Azure identities. This remains a security boundary that needs testing and further hardening before public production.
 
 ## Reliability and scaling decisions
 
 | Situation | Current behavior / limit |
 |---|---|
 | More founders or enabled agents | More configuration rows; no new infrastructure |
-| More simultaneous events | Container Apps scales 1–3 shared replicas; HTTP target 20/replica is a scaling signal, not a hard cap |
+| More simultaneous events | Container Apps scales 1-3 shared replicas; HTTP target 20/replica is a scaling signal, not a hard cap |
 | Two requests spend the same tenant balance | Conditional SQL reservation coordinates them across replicas |
 | Heavy traffic across all tenants | May exhaust model quota or database connections; more replicas do not increase either |
-| PostgreSQL outage | Readiness fails; requests cannot bypass auth/config/limits |
+| Azure SQL outage | Process readiness stays up; database-backed requests fail without bypassing auth/config/limits |
 | Model timeout or failure | Generic failure; no automatic retry or durable replay |
 | Process dies during inference | Tokens can remain reserved and execution `running`; reconcile before refunds |
 | Emergency stop | Blocks new work and suppresses checked in-flight output; an existing model call can still consume tokens |
@@ -141,3 +141,24 @@ Customer messages/replies are transient in the application, not written to SQL o
 - [Runtime and tenant-scoped queries](../app/main.py), [package permissions](../app/packages.py), [security limitations](../SECURITY.md)
 
 The diagrams describe the current **Terraform target**. They are not evidence of a live deployment. The older Bicep files are legacy references and lack this private-edge design.
+
+## Free database, paid edge
+
+The database is Azure SQL with a monthly free allowance and stop-at-limit behavior.
+If it exhausts that allowance, the platform loses database-backed functionality until
+the allowance resets. Connection pooling is disabled for this backend, and readiness
+probes do not query it, so idle traffic checks do not keep the database awake.
+
+> **Note:** Front Door Premium and WAF remain paid. Private endpoints, compute, logs
+> and Foundry usage are separate costs. This is not a zero-cost Azure stack.
+
+```mermaid
+flowchart LR
+  Customer[Customer] --> Edge[Front Door Premium and WAF: paid]
+  Edge --> App[Private Container Apps]
+  App --> SQL[Azure SQL: free allowance, then pause]
+  App --> AI[Shared Foundry model: usage charges]
+  App --> Monitor[Azure Monitor: usage charges]
+```
+
+See [Azure SQL setup](AZURE-SQL.md) for connection settings and existing-data migration precautions.

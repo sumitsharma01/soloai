@@ -66,11 +66,11 @@ resource "azurerm_cdn_frontdoor_security_policy" "main" {
 resource "azurerm_cdn_frontdoor_origin_group" "main" {
   name                     = "soloai"
   cdn_frontdoor_profile_id = azurerm_cdn_frontdoor_profile.main.id
-  session_affinity_enabled = false # Sessions are stored in PostgreSQL, not a replica.
+  session_affinity_enabled = false # Sessions are stored in Azure SQL, not a replica.
   load_balancing {}
   health_probe {
     protocol            = "Https"
-    path                = "/health"
+    path                = "/live"
     request_type        = "GET"
     interval_in_seconds = 60
   }

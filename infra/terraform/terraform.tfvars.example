@@ -12,8 +12,7 @@ min_replicas            = 1
 max_replicas            = 3
 http_concurrency_target = 20
 
-# One small database, no HA. Front Door Premium is required for private origins.
-database_sku        = "B_Standard_B1ms"
+# Azure SQL free allowance, with AutoPause at the limit. Front Door Premium is required for private origins.
 initialize_schema   = true
 
 # Supply database_admin_password using TF_VAR_database_admin_password.

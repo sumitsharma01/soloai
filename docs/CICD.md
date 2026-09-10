@@ -25,7 +25,7 @@ flowchart TD
    authentication and private network access. Use one key per environment. Blob leases
    provide state locking. Never use `force-unlock` without investigating the holder.
 2. Supply an isolated, preferably ephemeral Linux x64 GitHub runner labelled
-   `soloai-private`, with private DNS/VNet access to state, Key Vault and PostgreSQL,
+   `soloai-private`, with private DNS/VNet access to state, Key Vault and Azure SQL,
    plus outbound access to Azure management APIs, GitHub and Terraform providers.
    Install bash, Python 3, OpenSSL, curl and sha256sum. Do not share this runner with
    untrusted repositories or mount developer credentials on it.
