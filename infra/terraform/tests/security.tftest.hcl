@@ -1,6 +1,7 @@
 # Contract tests use a MOCK provider: no Azure login, state backend or resources.
 # They verify explicit infrastructure settings, not actual Azure service behavior.
 mock_provider "azurerm" {}
+mock_provider "cloudflare" {}
 
 override_data {
   target = data.azurerm_client_config.current
@@ -42,6 +43,10 @@ override_data {
 }
 
 variables {
+  cloudflare_account_id   = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  cloudflare_zone_id      = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+  public_hostname         = "soloai.example.com"
+  cloudflared_image       = "cloudflare/cloudflared:2026.3.0"
   subscription_id         = "00000000-0000-0000-0000-000000000000"
   resource_group_name     = "rg-soloai-test"
   registry_name           = "soloaitest"
@@ -63,8 +68,8 @@ run "private_data_and_bounded_compute" {
     error_message = "Vault RBAC and purge protection must remain enabled."
   }
   assert {
-    condition     = !azurerm_container_app.main.ingress[0].allow_insecure_connections
-    error_message = "Customer-facing ingress must require HTTPS."
+    condition     = length(azurerm_container_app.main.ingress) == 0
+    error_message = "The Azure app must have no direct ingress."
   }
   assert {
     condition     = azurerm_container_app.main.template[0].min_replicas == 1 && azurerm_container_app.main.template[0].max_replicas == 3
@@ -87,24 +92,24 @@ run "private_edge_with_waf" {
     error_message = "The app origin must not be publicly reachable around the WAF."
   }
   assert {
-    condition     = azurerm_cdn_frontdoor_profile.main.sku_name == "Premium_AzureFrontDoor" && azurerm_cdn_frontdoor_origin.main.private_link[0].target_type == "managedEnvironments"
-    error_message = "Front Door must reach the app through Premium Private Link."
+    condition     = cloudflare_zero_trust_tunnel_cloudflared_config.main.config.ingress[0].service == "http://localhost:8000" && cloudflare_zero_trust_tunnel_cloudflared_config.main.config.ingress[1].service == "http_status:404"
+    error_message = "Only the configured hostname may route to the local app."
   }
   assert {
-    condition     = azurerm_cdn_frontdoor_firewall_policy.main.mode == "Prevention" && azurerm_cdn_frontdoor_firewall_policy.main.enabled
-    error_message = "WAF must actively block rather than only detect."
+    condition     = cloudflare_dns_record.app.proxied && cloudflare_zone_setting.https.value == "on"
+    error_message = "The public hostname must use Cloudflare and HTTPS."
   }
   assert {
-    condition     = azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].type == "RateLimitRule" && azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].action == "Block" && azurerm_cdn_frontdoor_firewall_policy.main.custom_rule[0].rate_limit_threshold == 300
+    condition     = cloudflare_ruleset.rate_limit.rules[0].action == "block" && cloudflare_ruleset.rate_limit.rules[0].ratelimit.period == 10 && cloudflare_ruleset.rate_limit.rules[0].ratelimit.requests_per_period == 50
     error_message = "Default edge rate control must block excessive requests."
   }
   assert {
-    condition     = azurerm_cdn_frontdoor_route.main.forwarding_protocol == "HttpsOnly" && azurerm_cdn_frontdoor_route.main.https_redirect_enabled && length(azurerm_cdn_frontdoor_route.main.cache) == 0
-    error_message = "Only HTTPS may reach the origin, and authenticated content must not be cached."
+    condition     = cloudflare_ruleset.no_cache.rules[0].action_parameters.cache == false
+    error_message = "Authenticated content must not be cached."
   }
   assert {
-    condition     = contains(azurerm_cdn_frontdoor_security_policy.main.security_policies[0].firewall[0].association[0].patterns_to_match, "/*")
-    error_message = "The WAF must be associated with all application paths."
+    condition     = azurerm_container_app.main.template[0].container[0].name == "cloudflared" && length(azurerm_container_app.main.template[0].http_scale_rule) == 0
+    error_message = "The app needs a tunnel connector and must not rely on ingress HTTP scaling."
   }
   assert {
     condition     = azurerm_private_dns_zone.model.name == "privatelink.openai.azure.com" && contains(azurerm_private_endpoint.model.private_service_connection[0].subresource_names, "account")
@@ -137,9 +142,9 @@ run "reject_inverted_scaling_limits" {
 run "reject_invalid_edge_limit" {
   command = plan
   variables {
-    edge_requests_per_minute = 0
+    edge_requests_per_10_seconds = 0
   }
-  expect_failures = [var.edge_requests_per_minute]
+  expect_failures = [var.edge_requests_per_10_seconds]
 }
 
 run "reject_public_model" {

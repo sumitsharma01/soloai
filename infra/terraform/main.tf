@@ -27,9 +27,8 @@ locals {
   apps_cidr      = cidrsubnet(var.vnet_address_space, 7, 0) # first /23
   endpoints_cidr = cidrsubnet(var.vnet_address_space, 8, 3) # following /24
 
-  # The Front Door endpoint is the only public origin. It is independent of the
-  # app, so setting PUBLIC_ORIGIN here does not create a dependency cycle.
-  public_origin = "https://${azurerm_cdn_frontdoor_endpoint.main.host_name}"
+  # Public hostname belongs to an existing active Cloudflare zone.
+  public_origin = "https://${var.public_hostname}"
 
   # For staging only. Replace with a migrated runtime role for production.
   # urlencode protects delimiters in generated passwords; secrets stay in state.

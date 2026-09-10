@@ -1,6 +1,6 @@
 # Deliberately output identifiers and URLs only, never credentials or tokens.
 output "application_url" {
-  description = "Use this Front Door URL for both dashboard and server SDK; activation requires origin-link approval."
+  description = "Cloudflare HTTPS URL for the dashboard and SDK, once DNS and tunnel are healthy."
   value       = local.public_origin
 }
 
@@ -35,11 +35,11 @@ output "monitor_workspace_id" {
 }
 
 output "container_environment_id" {
-  description = "On this environment, approve the exact pending Front Door origin private connection."
+  description = "Private Azure environment hosting the app and outbound tunnel connector."
   value       = azurerm_container_app_environment.main.id
 }
 
-output "private_origin_hostname" {
-  description = "Diagnostic origin hostname; must be unreachable from the public internet."
-  value       = azurerm_container_app.main.ingress[0].fqdn
+output "cloudflare_tunnel_id" {
+  description = "Tunnel identifier for diagnostics; no connector token is output."
+  value       = cloudflare_zero_trust_tunnel_cloudflared.main.id
 }

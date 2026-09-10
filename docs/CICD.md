@@ -109,10 +109,17 @@ rejects stale plans. After failure, investigate partial state and start a fresh 
 run; do not assume rollback. Re-running just apply is intentionally not supported by
 the attempt-specific artifact naming.
 
-First deployment health may fail until Front Door's private-link approval and DNS
-propagation are complete. That is a verification failure, not automatic rollback.
-The repository instructions still govern that manual approval. No application image
-is built by this workflow: publish a reviewed image separately and update its input.
+First deployment health may fail until the tunnel connector is healthy, Cloudflare DNS
+is active and its edge certificate is ready. This is a verification failure, not an
+automatic rollback. Publish a reviewed application image separately.
+
+Both GitHub environments need a `CLOUDFLARE_API_TOKEN` secret. Scope plan access to
+reading the selected account/zone and tunnel token, and apply access to editing the
+tunnel, DNS, zone settings, Cache Rules and rate-limiting rules. Do not use a global
+API key. Include `cloudflare_account_id`, `cloudflare_zone_id`, `public_hostname`,
+`cloudflared_image` and `edge_requests_per_10_seconds` in `TF_CONFIG_JSON`.
+The connector token is sensitive and appears in protected Terraform state/plans.
+See [Cloudflare setup](CLOUDFLARE.md) before adopting an existing zone's rulesets.
 
 Validation in this change: shell syntax, YAML parsing, Terraform validation/tests.
 End-to-end OIDC, private runner access, GitHub approvals and Azure apply require the

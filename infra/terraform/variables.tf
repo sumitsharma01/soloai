@@ -112,15 +112,6 @@ variable "max_replicas" {
   }
 }
 
-variable "http_concurrency_target" {
-  description = "HTTP scaling target per replica; it is not a hard request/admission limit."
-  type        = number
-  default     = 20
-  validation {
-    condition     = var.http_concurrency_target >= 1 && floor(var.http_concurrency_target) == var.http_concurrency_target
-    error_message = "Use a positive integer concurrency target."
-  }
-}
 
 # ---- Monitoring ----
 variable "alert_email" {
@@ -134,12 +125,37 @@ variable "alert_email" {
 }
 
 # ---- Edge protection ----
-variable "edge_requests_per_minute" {
-  description = "Approximate WAF threshold per socket IP per minute; not a per-tenant token budget."
+variable "edge_requests_per_10_seconds" {
+  description = "Cloudflare Free rate limit per IP and edge location over ten seconds."
   type        = number
-  default     = 300
+  default     = 50
   validation {
-    condition     = var.edge_requests_per_minute >= 1 && floor(var.edge_requests_per_minute) == var.edge_requests_per_minute
+    condition     = var.edge_requests_per_10_seconds >= 1 && floor(var.edge_requests_per_10_seconds) == var.edge_requests_per_10_seconds
     error_message = "Use a positive integer edge rate threshold."
+  }
+}
+
+variable "cloudflare_account_id" {
+  description = "Account owning the tunnel."
+  type        = string
+}
+variable "cloudflare_zone_id" {
+  description = "Existing active Free-plan zone. Use a dedicated zone or import its rulesets."
+  type        = string
+}
+variable "public_hostname" {
+  description = "Full hostname on that zone, for example soloai.example.com."
+  type        = string
+  validation {
+    condition     = can(regex("^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$", var.public_hostname))
+    error_message = "Use a lowercase DNS hostname without a scheme, port or path."
+  }
+}
+variable "cloudflared_image" {
+  description = "Reviewed cloudflare/cloudflared image pinned by version or digest. No latest tag."
+  type        = string
+  validation {
+    condition     = can(regex("^cloudflare/cloudflared(:[0-9]+\\.[0-9]+\\.[0-9]+|@sha256:[a-f0-9]{64})$", var.cloudflared_image))
+    error_message = "Pin the cloudflared image to a release version or SHA256 digest."
   }
 }

@@ -19,7 +19,7 @@ flowchart LR
 
 | Component | Local replacement | Security boundary |
 |---|---|---|
-| Front Door + WAF | No public ingress | Bind only to 127.0.0.1 |
+| Cloudflare Free WAF | No public ingress | Bind only to 127.0.0.1 |
 | Container Apps | Local Python process | Current OS user; no public listener |
 | PostgreSQL | SQLite | Local file; tenant-scoped SQL |
 | Foundry | Deterministic demo responder | No provider credentials or paid inference |

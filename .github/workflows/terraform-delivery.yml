@@ -39,6 +39,7 @@ jobs:
       id-token: write
     env:
       ARM_CLIENT_ID: ${{ vars.AZURE_PLAN_CLIENT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       TF_VAR_database_admin_password: ${{ secrets.TF_DATABASE_ADMIN_PASSWORD }}
       PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
     defaults:
@@ -96,6 +97,7 @@ jobs:
       id-token: write
     env:
       ARM_CLIENT_ID: ${{ vars.AZURE_APPLY_CLIENT_ID }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       PLAN_ENCRYPTION_KEY: ${{ secrets.TF_PLAN_ENCRYPTION_KEY }}
     defaults:
       run:

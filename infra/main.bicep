@@ -10,6 +10,13 @@ param modelDeployment string
 @secure()
 param databasePassword string
 param publicOrigin string
+// Create a remotely managed Cloudflare Tunnel and configure its hostname to
+// http://localhost:8000, with a final http_status:404 rule, before deploying.
+// Bicep manages Azure only. See docs/CLOUDFLARE.md for the Cloudflare setup.
+@secure()
+param cloudflareTunnelToken string
+@description('Reviewed cloudflare/cloudflared release tag or digest. Do not use latest.')
+param cloudflaredImage string
 var suffix = uniqueString(resourceGroup().id)
 resource identity 'Microsoft.ManagedIdentity/userAssignedIdentities@2023-01-31' = {
   name: '${prefix}-app'
@@ -125,11 +132,12 @@ resource insights 'Microsoft.Insights/components@2020-02-02' = {
   kind: 'web'
   properties: { Application_Type: 'web', WorkspaceResourceId: logs.id }
 }
-resource environment 'Microsoft.App/managedEnvironments@2024-03-01' = {
+resource environment 'Microsoft.App/managedEnvironments@2025-07-01' = {
   name: '${prefix}-environment'
   location: location
   properties: {
-    vnetConfiguration: { infrastructureSubnetId: '${vnet.id}/subnets/apps', internal: false }
+    publicNetworkAccess: 'Disabled'
+    vnetConfiguration: { infrastructureSubnetId: '${vnet.id}/subnets/apps', internal: true }
     workloadProfiles: [{ name: 'Consumption', workloadProfileType: 'Consumption' }]
     appLogsConfiguration: { destination: 'log-analytics', logAnalyticsConfiguration: { customerId: logs.properties.customerId, sharedKey: logs.listKeys().primarySharedKey } }
   }
@@ -142,9 +150,12 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
     managedEnvironmentId: environment.id
     configuration: {
       activeRevisionsMode: 'Single'
-      ingress: { external: true, targetPort: 8000, allowInsecure: false, transport: 'auto' }
+      // No managed ingress. The outbound connector is the only public route.
       registries: [{ server: registry.properties.loginServer, identity: identity.id }]
-      secrets: [{ name: 'database-url', keyVaultUrl: secret.properties.secretUri, identity: identity.id }]
+      secrets: [
+        { name: 'database-url', keyVaultUrl: secret.properties.secretUri, identity: identity.id }
+        { name: 'tunnel-token', value: cloudflareTunnelToken }
+      ]
     }
     template: {
       containers: [{
@@ -159,9 +170,16 @@ resource app 'Microsoft.App/containerApps@2024-03-01' = {
           { name: 'AZURE_OPENAI_ENDPOINT', value: model.properties.endpoint }
           { name: 'AZURE_OPENAI_DEPLOYMENT', value: modelDeployment }
         ]
-        probes: [{ type: 'Readiness', httpGet: { path: '/health', port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }]
+        probes: [{ type: 'Readiness', httpGet: { path: '/live', port: 8000 }, initialDelaySeconds: 10, periodSeconds: 10 }]
+      }, {
+        name: 'cloudflared'
+        image: cloudflaredImage
+        resources: { cpu: json('0.25'), memory: '0.5Gi' }
+        args: ['tunnel', '--no-autoupdate', 'run']
+        env: [{ name: 'TUNNEL_TOKEN', secretRef: 'tunnel-token' }]
       }]
-      scale: { minReplicas: 1, maxReplicas: 3, rules: [{ name: 'http', http: { metadata: { concurrentRequests: '20' } } }] }
+      // Tunnel requests do not reach the managed HTTP scaler. Keep one replica.
+      scale: { minReplicas: 1, maxReplicas: 1 }
     }
   }
   dependsOn: [vaultRole,pull,modelRole,database,group,vaultLink]
@@ -179,5 +197,5 @@ resource failures 'Microsoft.Insights/scheduledQueryRules@2023-12-01' = {
     criteria: { allOf: [{ query: 'ContainerAppConsoleLogs_CL | where Log_s contains "agent.execution" | where Log_s contains "failed"', timeAggregation: 'Count', operator: 'GreaterThan', threshold: 5, failingPeriods: { numberOfEvaluationPeriods: 1, minFailingPeriodsToAlert: 1 } }] }
   }
 }
-output url string = 'https://${app.properties.configuration.ingress.fqdn}'
+output url string = publicOrigin
 output logWorkspace string = logs.name

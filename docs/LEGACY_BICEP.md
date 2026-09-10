@@ -2,7 +2,7 @@
 
 # Azure deployment
 
-For the commented Terraform alternative, see [Terraform IaC](../infra/terraform/README.md). This page and `azure-pipelines.yml` describe **Bicep**. Do not deploy both tools into the same managed resources.
+For the commented Terraform alternative, see [Terraform IaC](../infra/terraform/README.md). This page and `infra/legacy/azure-pipelines-bicep.yml` describe **Bicep**. Do not deploy both tools into the same managed resources.
 
 This template has been syntax-checked locally. It has **not** been deployed into a subscription. Provisioning availability, RBAC propagation, model compatibility and private networking still need staging verification.
 
@@ -12,7 +12,7 @@ Use one resource group containing an existing Azure Container Registry (RBAC per
 
 Create an Azure DevOps workload-identity service connection named `soloai-azure-oidc`, scoped to this resource group. It needs infrastructure write and role-assignment rights for initial provisioning. Restrict pipeline use and separate provisioning from routine image deployment after bootstrap. No subscription credential belongs in GitHub.
 
-Import this GitHub repository into Azure Pipelines using `azure-pipelines.yml`. Create the `soloai-production` environment with an approval check. Create a variable group of the same name with:
+Import this GitHub repository into Azure Pipelines using `infra/legacy/azure-pipelines-bicep.yml`. Create the `soloai-production` environment with an approval check. Create a variable group of the same name with:
 
 | Variable | Value |
 |---|---|
@@ -21,23 +21,25 @@ Import this GitHub repository into Azure Pipelines using `azure-pipelines.yml`. 
 | `modelResource` | Existing Azure OpenAI account in that group |
 | `modelDeployment` | Chat-compatible deployment name, not model family |
 | `databasePassword` | Strong random password; mark secret |
-| `publicOrigin` | Exact HTTPS dashboard origin, without trailing slash |
+| `publicOrigin` | Exact HTTPS Cloudflare hostname, without trailing slash |
+| `cloudflareTunnelToken` | Connector token; mark secret |
+| `cloudflaredImage` | Reviewed pinned cloudflare/cloudflared image |
 
 Normal pushes run validation only. Manually run with `deploy=true` after configuring these values. The pipeline builds an immutable build-number image in ACR and deploys Bicep. It passes the password through a private temporary parameter file rather than command-line interpolation. Hosted agents are ephemeral; if using a persistent agent, delete that temporary file after deployment.
 
-For the initial default Azure domain, you may use a deliberately nonmatching HTTPS origin on first deployment. Read the returned `url`, set `publicOrigin` to that exact origin and redeploy before using the browser. Requests from other origins are rejected. A custom domain also needs DNS/certificate binding, not included here.
+Configure the Cloudflare tunnel, proxied hostname, HTTPS, cache bypass and free security rules separately before deploying Bicep. Its route must forward to `http://localhost:8000` with a final `http_status:404` catchall. Supply the connector token through the secret variable above. See [Cloudflare setup](CLOUDFLARE.md). Bicep manages Azure only.
 
 ## Resources
 
 - VNet with separate delegated Container Apps and PostgreSQL subnets.
-- Public HTTPS Container App ingress; the SaaS frontend must be reachable by customers. VNet integration does **not** make that ingress private.
+- Internal Container Apps environment with public access disabled and no app ingress. A cloudflared sidecar connects outbound and forwards to localhost. One replica stays running; no HTTP autoscaler is configured.
 - Private PostgreSQL Flexible Server, seven-day backups and TLS connection.
 - Private Key Vault endpoint/DNS, RBAC and purge protection; application database URL is a Key Vault reference.
 - User-assigned managed identity for registry pulls, Key Vault reads and Azure OpenAI inference.
 - Log Analytics with 30-day retention and a failure-rate scheduled-query alert. Add an action group to deliver notifications; without one the alert is visible only in Azure Monitor.
 - Application Insights resource reserved for later metadata-only tracing; SDK auto-instrumentation is intentionally not enabled, to avoid inadvertent content/header collection.
 
-The existing model resource remains on its existing networking configuration. The template does not silently change a shared model's public access or add its private endpoint. For private model access, configure the resource endpoint and matching private DNS in the VNet before launch. Outbound traffic is not filtered by an Azure Firewall in this minimal template. Add WAF/Front Door and edge abuse protection before open public signup.
+The existing model resource remains on its existing networking configuration. The template does not silently change a shared model's public access or add its private endpoint. For private model access, configure the resource endpoint and matching private DNS in the VNet before launch. Outbound traffic is not filtered by an Azure Firewall in this minimal template. Verify the separately configured Cloudflare Free security controls before public signup.
 
 ## Database role limitation
 

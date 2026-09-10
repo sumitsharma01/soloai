@@ -43,7 +43,7 @@ taken in the live Foundry profile; its AI requests are billable.
 - 10,000 lifetime starter tokens and 20 agent requests per minute per workspace, enforced in SQL before inference.
 - Execution status, latency, token totals, optional operator-configured cost estimate and configuration audit history.
 - Server-side JavaScript SDK, application key generation/rotation and connection instructions.
-- Minimal Terraform: Front Door Premium + WAF, private Container Apps/data/model connections, managed identity, basic monitoring and credential-free CI.
+- Minimal Terraform: Cloudflare Free + Tunnel, private Container Apps/data/model connections, managed identity, basic monitoring and Azure OIDC CI and a scoped Cloudflare API token.
 
 **Current scope:** a working local MVP and Azure deployment foundation. Azure inference is implemented but requires your configured model and credentials. There is no live Gmail/Outlook connection, email sending, billing, third-party marketplace execution, or production identity lifecycle. Planned store cards are labeled accordingly. See [security limitations](SECURITY.md) and [Azure launch steps](docs/AZURE.md).
 
@@ -166,7 +166,7 @@ flowchart LR
 
 The SoloAI-to-Foundry connection currently uses Entra ID. Each invocation contains
 only the authenticated workspace's guidance and message, with no shared conversation.
-For the planned Azure deployment, Front Door + WAF protects the SoloAI API and routes
+For the planned Azure deployment, Cloudflare Free WAF protects the SoloAI API and routes
 to Container Apps privately; that infrastructure is not part of the local demo.
 
 ## Use Azure Foundry directly as a model
@@ -189,10 +189,9 @@ Terraform now creates Azure SQL Database with the free allowance enabled and
 database is paused at the limit, login, agent settings and agent execution cannot
 work until it becomes available again. See [database setup](docs/AZURE-SQL.md).
 
-> **Note:** Front Door Premium and its WAF are still paid services in this architecture.
-> The free database offer does not cover Front Door, Container Apps, private endpoints,
-> Key Vault, monitoring or Foundry tokens. Cloudflare was discussed as an alternative
-> but has not replaced Front Door in Terraform.
+> **Note:** Cloudflare Free replaces the paid Azure edge. Container Apps, private endpoints,
+> Key Vault, monitoring and Foundry tokens can still incur charges. The tunnel needs
+> at least one running app replica. See [Cloudflare setup](docs/CLOUDFLARE.md).
 
 ## Terraform and architecture guide
 
@@ -200,14 +199,14 @@ work until it becomes available again. See [database setup](docs/AZURE-SQL.md).
 
 **[Architecture diagrams →](docs/ARCHITECTURE.md)** :  Azure services and network boundaries, concurrent customer signup/agent activation, shared-model tenant isolation, event routing, failure behavior, reliability and scaling decisions.
 
-Terraform is the supported private-edge deployment. Front Door Premium + WAF is the public entry point; Container Apps, database, vault and model access are private. Both pipelines validate only; use the reviewed-plan deployment runbook. The old Bicep files are legacy references.
+Terraform is the supported private-edge deployment. Cloudflare Free + Tunnel is the public entry point; Container Apps, database, vault and model access are private. GitHub Actions supports opt-in reviewed-plan deployment; see the deployment runbook. The old Bicep files are legacy references.
 
 ## Architecture
 
 ```mermaid
 flowchart LR
-  I[Internet] --> F[Front Door Premium + WAF]
-  F -->|Private Link| A[Private Container Apps]
+  I[Internet] --> F[Cloudflare Free + Tunnel]
+  F -->|Outbound tunnel connector| A[Private Container Apps]
   A --> P[(Private Azure SQL)]
   A --> K[Private Key Vault]
   A --> M[Private shared Foundry model]

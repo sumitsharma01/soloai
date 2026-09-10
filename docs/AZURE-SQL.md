@@ -14,7 +14,7 @@ per month. See [the offer and its limits](https://learn.microsoft.com/en-us/azur
 The database becomes unavailable when the allowance is exhausted and resumes after
 the monthly reset. This is suitable for a small trial, not an uptime commitment.
 
-> **Note:** Azure Front Door Premium and its WAF are paid. The SQL private endpoint,
+> **Note:** Cloudflare Free replaces the paid Azure edge. The SQL private endpoint,
 > application hosting, monitoring and model usage also have separate pricing. Changing
 > the database does not make the complete Azure deployment free.
 
@@ -48,7 +48,7 @@ mssql+pyodbc://USER:PASSWORD@SERVER.database.windows.net:1433/soloai?driver=ODBC
 The app translates its small set of database-specific statements for SQL Server,
 including table setup, pagination and the concurrent sign-in limiter. Indexed IDs use
 bounded strings; business guidance supports Unicode. SQL Server connection pooling is
-disabled to let idle serverless databases pause. Container readiness and Front Door probes use `/live`, which
+disabled to let idle serverless databases pause. Container readiness probes use `/live`, which
 does not query SQL. `/health` remains an on-demand database check.
 
 Resume delays or monthly exhaustion may cause database requests to fail. The app does

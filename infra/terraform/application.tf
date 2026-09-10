@@ -43,25 +43,26 @@ resource "azurerm_container_app" "main" {
     key_vault_secret_id = azurerm_key_vault_secret.database_url.id
   }
 
-  ingress {
-    # External to this app, but private to the environment/Private Link.
-    external_enabled           = true
-    allow_insecure_connections = false
-    target_port                = 8000
-    transport                  = "auto"
-    traffic_weight {
-      latest_revision = true
-      percentage      = 100
-    }
+  secret {
+    name  = "tunnel-token"
+    value = data.cloudflare_zero_trust_tunnel_cloudflared_token.main.token
   }
 
   template {
     min_replicas = var.min_replicas
     max_replicas = var.max_replicas
 
-    http_scale_rule {
-      name                = "http"
-      concurrent_requests = tostring(var.http_concurrency_target)
+    # No app ingress or HTTP autoscaling. Set min_replicas for capacity.
+    container {
+      name   = "cloudflared"
+      image  = var.cloudflared_image
+      cpu    = 0.25
+      memory = "0.5Gi"
+      args   = ["tunnel", "--no-autoupdate", "run"]
+      env {
+        name        = "TUNNEL_TOKEN"
+        secret_name = "tunnel-token"
+      }
     }
 
     container {
@@ -121,6 +122,7 @@ resource "azurerm_container_app" "main" {
   }
 
   depends_on = [
+    cloudflare_zero_trust_tunnel_cloudflared_config.main,
     azurerm_role_assignment.registry_pull,
     azurerm_role_assignment.model_inference,
     azurerm_role_assignment.app_secret_reader,

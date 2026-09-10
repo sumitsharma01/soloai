@@ -7,8 +7,8 @@
 ```mermaid
 flowchart TB
     internet["Internet<br/>Founder browser / customer application server"]
-    edge["Azure Front Door Premium + WAF<br/>HTTPS · managed attack rules · IP rate limit / block"]
-    privateOrigin["Front Door managed Private Link<br/>Explicit origin connection approval"]
+    edge["Cloudflare Free + Tunnel<br/>HTTPS · managed attack rules · IP rate limit / block"]
+    privateOrigin["Cloudflare Tunnel<br/>Outbound connector in app replica"]
 
     subgraph vnet["SoloAI VNet :  private application and data paths"]
       app["Azure Container Apps<br/>Internal environment; public access disabled<br/>One application · 1-3 shared replicas"]
@@ -35,7 +35,7 @@ flowchart TB
     app --> monitor
 ```
 
-**Only Front Door accepts public application traffic.** WAF rules apply to every route. HTTPS is enforced and CDN response caching is disabled. Container Apps cannot be reached directly from the internet around the WAF. Connections inside an authorized private network are a separate trust boundary; Front Door is not a firewall between all internal services.
+**Cloudflare is the public entry point.** HTTPS is enforced and response caching is disabled for the app hostname. The Free Managed Ruleset is a limited ruleset, not the full paid OWASP offering. One rate rule covers `/api/` paths. A cloudflared sidecar opens outbound tunnel connections and forwards to localhost:8000. The Container App has no managed ingress, and its environment is internal with public access disabled. See [Cloudflare setup](CLOUDFLARE.md) for account prerequisites and limits.
 
 The app uses private DNS/TLS for Azure SQL, Key Vault and model access. The AI account owner disables public and API-key access; Terraform refuses an account that does not meet those conditions. No model key is supplied to the application. ACR is reused with identity-based pulls; this minimal stack does not add an ACR private endpoint or an outbound Azure Firewall.
 
@@ -43,7 +43,7 @@ The app uses private DNS/TLS for Azure SQL, Key Vault and model access. The AI a
 
 | Component | Why it stays |
 |---|---|
-| Front Door Premium + WAF | Required public edge, managed request blocking, rate control and private origin |
+| Cloudflare Free + Tunnel | Free public edge, limited managed rules, API rate control and outbound tunnel |
 | Container Apps | One service for dashboard, login, API and orchestrator; scale replicas without managing servers |
 | Azure SQL | Persistent tenant configuration, authentication metadata and shared usage counters |
 | Shared Azure OpenAI deployment | One inference backend for every tenant |
@@ -52,14 +52,14 @@ The app uses private DNS/TLS for Azure SQL, Key Vault and model access. The AI a
 | Existing ACR | Deliver the built image |
 | Log Analytics + failure alert | Basic operations; optional email recipient |
 
-Removed the unused Application Insights resource and optional HA configuration switches. No AKS, API Management, Redis, Service Bus, separate worker, second region or dedicated infrastructure per tenant. Front Door Premium is a necessary cost for the chosen Private Link origin; “minimal” here refers to the requested service set, not the lowest possible bill.
+Removed the unused Application Insights resource and optional HA configuration switches. No AKS, API Management, Redis, Service Bus, separate worker, second region or dedicated infrastructure per tenant. Cloudflare Free replaces the paid Azure edge. Always-running Azure compute, private endpoints, logs and model usage still have charges.
 
 ## Request workflow
 
 ```mermaid
 sequenceDiagram
     participant User as Internet client
-    participant Edge as Front Door + WAF
+    participant Edge as Cloudflare Free WAF
     participant App as SoloAI Container App
     participant DB as Private Azure SQL
     participant AI as Private shared Foundry model
@@ -68,7 +68,7 @@ sequenceDiagram
     alt Suspicious or excessive IP traffic
       Edge-->>User: Block before origin
     else Allowed request
-      Edge->>App: HTTPS over approved Private Link
+      Edge->>App: Encrypted tunnel; localhost forwarding
       App->>DB: Authenticate session/key and resolve tenant
       App->>DB: Load enabled agent; atomically reserve tenant usage
       alt Disabled / unauthorized / out of allowance
@@ -118,7 +118,7 @@ Future connectors must store credentials and permissions with a tenant owner, us
 | Situation | Current behavior / limit |
 |---|---|
 | More founders or enabled agents | More configuration rows; no new infrastructure |
-| More simultaneous events | Container Apps scales 1-3 shared replicas; HTTP target 20/replica is a scaling signal, not a hard cap |
+| More simultaneous events | Increase min_replicas manually; HTTP autoscaling is not configured because tunnel traffic bypasses managed ingress |
 | Two requests spend the same tenant balance | Conditional SQL reservation coordinates them across replicas |
 | Heavy traffic across all tenants | May exhaust model quota or database connections; more replicas do not increase either |
 | Azure SQL outage | Process readiness stays up; database-backed requests fail without bypassing auth/config/limits |
@@ -132,29 +132,29 @@ Start small, measure p95 latency, DB connections/CPU, failed executions and prov
 
 The existing login limiter uses the immediate peer address. Managed ingress can make multiple people appear to share that address; WAF does not fix this application limitation. Trusted-proxy-aware login protection, a least-privilege DB runtime role, verified identity/recovery and RLS remain launch work.
 
-Customer messages/replies are transient in the application, not written to SQL or console logs. Guidance is intentionally persisted configuration. Model-provider retention is separate. No raw Front Door request/body logging is enabled by this template; inspect edge metrics in Azure and deliberately design any additional logging retention.
+Customer messages/replies are transient in the application, not written to SQL or console logs. Guidance is intentionally persisted configuration. Model-provider retention is separate. No raw request/body logging is enabled by this template. Cloudflare processes requests at its edge; its retention policies are separate from SoloAI. Inspect edge events in Cloudflare and application metrics in Azure.
 
 ## Code and deployment
 
 - [Readable Terraform files](../infra/terraform/README.md)
-- [Deployment, private-link approval and upgrade instructions](AZURE.md)
+- [Deployment, tunnel setup and upgrade instructions](AZURE.md)
 - [Runtime and tenant-scoped queries](../app/main.py), [package permissions](../app/packages.py), [security limitations](../SECURITY.md)
 
-The diagrams describe the current **Terraform target**. They are not evidence of a live deployment. The older Bicep files are legacy references and lack this private-edge design.
+The diagrams describe the current **Terraform target**. They are not evidence of a live deployment. Bicep also uses a tunnel sidecar, but remains a legacy PostgreSQL variant. Cloudflare resources must be configured separately for Bicep.
 
-## Free database, paid edge
+## Free edge and database allowance
 
 The database is Azure SQL with a monthly free allowance and stop-at-limit behavior.
 If it exhausts that allowance, the platform loses database-backed functionality until
 the allowance resets. Connection pooling is disabled for this backend, and readiness
 probes do not query it, so idle traffic checks do not keep the database awake.
 
-> **Note:** Front Door Premium and WAF remain paid. Private endpoints, compute, logs
+> **Note:** Cloudflare Free has no edge subscription charge. Private endpoints, compute, logs
 > and Foundry usage are separate costs. This is not a zero-cost Azure stack.
 
 ```mermaid
 flowchart LR
-  Customer[Customer] --> Edge[Front Door Premium and WAF: paid]
+  Customer[Customer] --> Edge[Cloudflare Free edge]
   Edge --> App[Private Container Apps]
   App --> SQL[Azure SQL: free allowance, then pause]
   App --> AI[Shared Foundry model: usage charges]

@@ -29,7 +29,7 @@ Use short questions and avoid repeating live tests unnecessarily.
 - A real shared Azure Foundry support agent using gpt-5.4 and server-side Entra login.
 - Local Prometheus and Grafana with loopback-only listeners.
 
-Azure SQL, Front Door, private networking and the Azure Workbook are described in
+Azure SQL, Cloudflare Tunnel, private networking and the Azure Workbook are described in
 Terraform, not deployed locally. This demo does not validate their production behavior.
 Live AI requires internet access and incurs model usage. Email inbox ingestion and
 sending are not implemented. The model has no privileged tools or shared conversation.

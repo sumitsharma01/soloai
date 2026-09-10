@@ -61,5 +61,7 @@ stages:
                 RESOURCE_GROUP: $(resourceGroup)
                 MODEL_RESOURCE: $(modelResource)
                 MODEL_DEPLOYMENT: $(modelDeployment)
+                CLOUDFLARE_TUNNEL_TOKEN: $(cloudflareTunnelToken)
+                CLOUDFLARED_IMAGE: $(cloudflaredImage)
                 PUBLIC_ORIGIN: $(publicOrigin)
                 DATABASE_PASSWORD: $(databasePassword)
