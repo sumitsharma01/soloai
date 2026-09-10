@@ -8,3 +8,14 @@ __pycache__/
 .venv/
 *.pyc
 infra/main.json
+
+# Terraform working files, secrets, plans and state (keep the provider lockfile).
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+*.tfvars
+*.tfvars.json
+**/backend.hcl
+crash.log
+crash.*.log

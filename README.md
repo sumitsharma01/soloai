@@ -78,6 +78,14 @@ For local Azure access, sign in with Azure CLI and grant the principal the **Cog
 
 `SOLOAI_ENV=production` rejects SQLite and missing model configuration; cookies become Secure. PostgreSQL and the exact `PUBLIC_ORIGIN` are required. Follow [Azure deployment](docs/AZURE.md), including reduction of bootstrap database privileges, before using real customer data. Model pricing, quota and resource costs are not bundled or assumed.
 
+## Terraform and architecture guide
+
+**[Terraform IaC →](infra/terraform/README.md)** — one root configuration, split into networking, database, identity, secrets, application and monitoring files, with comments, input validation, remote-state examples and mocked security tests.
+
+**[Architecture diagrams →](docs/ARCHITECTURE.md)** — Azure services and network boundaries, concurrent customer signup/agent activation, shared-model tenant isolation, event routing, failure behavior, reliability and scaling decisions.
+
+Terraform is an alternative to the Bicep deployment. Choose one owner per Azure environment; the existing Azure deployment pipeline still uses Bicep. No Azure resources are provisioned by the CI validation job.
+
 ## Architecture
 
 ```mermaid
@@ -115,7 +123,8 @@ app/packages.py          Trusted first-party package registry
 app/static/              Responsive dashboard (no frontend build required)
 sdk/soloai.mjs           Server-only JavaScript integration
 examples/server.mjs     Chat and email event examples
-infra/main.bicep         Azure infrastructure
+infra/main.bicep         Original Azure Bicep infrastructure
+infra/terraform/         Segregated Terraform alternative + runbook + tests
 azure-pipelines.yml     Validate, build, manually gated deployment
 .github/workflows/      GitHub validation
 scripts/                Deployment parameters and metadata cleanup

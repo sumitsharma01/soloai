@@ -1,5 +1,7 @@
 # Azure deployment
 
+For the commented Terraform alternative, see [Terraform IaC](../infra/terraform/README.md). This page and `azure-pipelines.yml` describe **Bicep**. Do not deploy both tools into the same managed resources.
+
 This template has been syntax-checked locally. It has **not** been deployed into a subscription. Provisioning availability, RBAC propagation, model compatibility and private networking still need staging verification.
 
 ## Prerequisites

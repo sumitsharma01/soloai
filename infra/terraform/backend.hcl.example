@@ -1,0 +1,8 @@
+# Existing state store, bootstrapped outside this stack. Use a different key per
+# environment. No account keys/client secrets; use Entra ID or federated OIDC.
+resource_group_name  = "rg-terraform-state"
+storage_account_name = "YOUR_STATE_STORAGE_ACCOUNT"
+container_name       = "tfstate"
+key                  = "soloai/staging.tfstate"
+use_azuread_auth      = true
+# For CI OIDC, configure ARM_USE_OIDC=true and the platform's supported token flow.
