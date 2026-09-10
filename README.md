@@ -65,6 +65,10 @@ For email, emit `email.received` with the incoming message as `content`. The res
 
 Never place the SoloAI key in frontend code. Key rotation invalidates the old key immediately. Request payloads cannot supply or override a tenant ID. Events are synchronous, have no automatic retries, and do not have exactly-once semantics.
 
+## Prepared Foundry support agent
+
+[**SoloAI Support agent**](agents/soloai-support/README.md) includes website replies, review-only email drafts, a tool-free definition, synthetic test cases and a creation script. It is prepared for creation in your Foundry project; it is not yet deployed or connected to the dashboard.
+
 ## Use Azure Foundry
 
 Use a chat-compatible Azure OpenAI deployment in Foundry. Set:

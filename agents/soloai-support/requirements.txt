@@ -1,0 +1,5 @@
+# Separate creation utility; these dependencies are not added to the SaaS runtime.
+azure-ai-projects==2.3.0
+azure-identity==1.25.2
+openai==2.8.1
+httpx==0.28.1

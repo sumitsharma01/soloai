@@ -19,3 +19,4 @@ infra/main.json
 **/backend.hcl
 crash.log
 crash.*.log
+.venv-foundry/

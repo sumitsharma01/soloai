@@ -28,3 +28,15 @@ jobs:
       - run: terraform -chdir=infra/terraform init -backend=false -input=false -lockfile=readonly
       - run: terraform -chdir=infra/terraform validate
       - run: terraform -chdir=infra/terraform test
+
+  foundry-agent:
+    name: Foundry agent creation contracts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r agents/soloai-support/requirements.txt
+      - run: python agents/soloai-support/test_creator.py
+      - run: python scripts/create_foundry_agent.py --model synthetic-ci-model
