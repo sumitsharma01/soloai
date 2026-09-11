@@ -8,6 +8,8 @@ An Azure-oriented SaaS MVP for connecting an existing application to a small, pe
 
 ## Run without cloud charges
 
+Explore proposed workflows in [Use cases](use-cases/README.md), including ecommerce email triage with Kafka and human review.
+
 Use the [free local architecture](docs/FREE-LOCAL.md): local Python, SQLite, Prometheus
 and Grafana, with simulated AI replies. Start with `bash scripts/run-free-local.sh`
 after activating your Python environment. Live Foundry and the Azure Terraform stack
