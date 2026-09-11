@@ -171,38 +171,44 @@ Management. It replaces Cloudflare and its tunnel. Traffic Manager selects a reg
 gateway through DNS; the browser sends HTTPS directly to that gateway.
 
 ```mermaid
-flowchart TB
-  User[Internet client]
-  TM[Azure Traffic Manager<br/>Priority routing and endpoint health probes]
-  User -.->|DNS lookup| TM
-  TM -.->|Healthy regional gateway address| User
+flowchart LR
+  U["Customer<br/>Browser or application"]
+  T["Traffic Manager<br/>DNS routing only"]
 
-  subgraph A[Region A: primary VNet]
-    GA[Public Application Gateway WAF_v2<br/>TLS, managed rules and rate limits]
-    AA[Internal Azure Container Apps<br/>Private HTTPS ingress and shared app replicas]
-    KA[Key Vault and private DNS<br/>Managed identity and scoped access]
-    GA -->|Private backend HTTPS| AA
-    AA --> KA
-  end
-  subgraph B[Region B: optional standby VNet]
-    GB[Public Application Gateway WAF_v2<br/>Matching certificate and WAF policy]
-    AB[Internal Azure Container Apps<br/>Standby app and configuration]
-    KB[Regional Key Vault and private DNS]
-    GB -->|Private backend HTTPS| AB
-    AB --> KB
+  subgraph Azure["Azure region"]
+    G["Application Gateway + WAF<br/>HTTPS and request protection"]
+    A["SoloAI on Container Apps<br/>Login, permissions and agents"]
+    D[("Azure SQL<br/>Tenant settings and usage")]
+    F["Azure Foundry<br/>Shared AI model"]
+    M["Azure Monitor<br/>Latency, errors and tokens"]
   end
 
-  User -->|HTTPS to selected endpoint| GA
-  User -->|HTTPS after DNS failover| GB
-  TM -.->|Health probe| GA
-  TM -.->|Health probe| GB
-  AA -->|Private TLS| SQL[Azure SQL primary<br/>Tenant configuration, sessions and usage]
-  AB -->|Private TLS with cross-region routing| SQL
-  AA -->|Private endpoint| AI[Shared Azure Foundry model<br/>Tenant context per request]
-  AB -->|Private endpoint| AI
-  AA --> MON[Azure Monitor and Log Analytics<br/>Latency, errors, throughput and token usage]
-  AB --> MON
+  U -.->|"1. Find gateway address"| T
+  U -->|"2. Send HTTPS request"| G
+  G -->|"3. Forward allowed request"| A
+  A <-->|"4. Check tenant and token budget"| D
+  A <-->|"5. Send tenant context / receive AI reply"| F
+  A -.->|"6. Record execution metrics"| M
+
+  classDef client fill:#F1F5F9,stroke:#64748B,color:#0F172A
+  classDef routing fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+  classDef app fill:#ECFDF5,stroke:#059669,color:#064E3B
+  classDef data fill:#F5F3FF,stroke:#7C3AED,color:#4C1D95
+  class U client
+  class T,G routing
+  class A app
+  class D,F,M data
 ```
+
+**Read the numbered steps from 1 to 6.** Step 1 is a DNS lookup that returns the
+selected gateway address. The HTTPS request starts at step 2 and never passes
+through Traffic Manager. After processing, the reply returns along the same route:
+**SoloAI → Application Gateway → Customer**.
+
+SQL, Foundry and the app backend use private connections. Key Vault, managed identity
+and private DNS support these connections but are omitted from the diagram to keep
+the request flow readable. SoloAI records actual usage in SQL after the model call;
+Azure Monitor receives operational metadata, not customer messages.
 
 Application Gateway inspects HTTP requests and forwards allowed traffic to the
 internal Container Apps environment. Configure backend DNS, TLS host names,
@@ -212,14 +218,14 @@ reachable from the gateway's VNet. Remove the cloudflared sidecar in that varian
 
 Traffic Manager does not proxy traffic, terminate TLS or provide a WAF. DNS caching,
 TTL and health detection affect failover time; existing connections do not move
-automatically. Both gateways need certificates for the public application hostname.
+automatically. Each gateway needs a certificate for the public application hostname.
 See Microsoft's [Application Gateway overview](https://learn.microsoft.com/en-us/azure/application-gateway/overview)
 and [multiregion design](https://learn.microsoft.com/en-us/azure/architecture/high-availability/traffic-manager-application-gateway).
 
 Start with one regional gateway if Azure-native ingress is required. Traffic Manager
 adds meaningful regional failover only when a second working endpoint exists.
-The optional standby above still depends on the primary SQL database and shared
-model, so it does **not** survive a full primary-region outage. That would require a
+A second gateway alone does **not** protect against a full regional outage when
+SQL and the model remain in the primary region. Regional recovery would require a
 tested SQL replication/failover design, a secondary model deployment with available
 quota, regional secrets and coordinated application recovery. Gateway `/live` probes
 alone cannot establish that those dependencies are usable.
