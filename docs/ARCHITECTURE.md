@@ -162,3 +162,73 @@ flowchart LR
 ```
 
 See [Azure SQL setup](AZURE-SQL.md) for connection settings and existing-data migration precautions.
+
+## Azure-native alternative: Traffic Manager and Application Gateway
+
+This is an optional future design, not the current Terraform or Bicep deployment.
+Here, Azure gateway means **Application Gateway WAF_v2**, not VPN Gateway or API
+Management. It replaces Cloudflare and its tunnel. Traffic Manager selects a regional
+gateway through DNS; the browser sends HTTPS directly to that gateway.
+
+```mermaid
+flowchart TB
+  User[Internet client]
+  TM[Azure Traffic Manager<br/>Priority routing and endpoint health probes]
+  User -.->|DNS lookup| TM
+  TM -.->|Healthy regional gateway address| User
+
+  subgraph A[Region A: primary VNet]
+    GA[Public Application Gateway WAF_v2<br/>TLS, managed rules and rate limits]
+    AA[Internal Azure Container Apps<br/>Private HTTPS ingress and shared app replicas]
+    KA[Key Vault and private DNS<br/>Managed identity and scoped access]
+    GA -->|Private backend HTTPS| AA
+    AA --> KA
+  end
+  subgraph B[Region B: optional standby VNet]
+    GB[Public Application Gateway WAF_v2<br/>Matching certificate and WAF policy]
+    AB[Internal Azure Container Apps<br/>Standby app and configuration]
+    KB[Regional Key Vault and private DNS]
+    GB -->|Private backend HTTPS| AB
+    AB --> KB
+  end
+
+  User -->|HTTPS to selected endpoint| GA
+  User -->|HTTPS after DNS failover| GB
+  TM -.->|Health probe| GA
+  TM -.->|Health probe| GB
+  AA -->|Private TLS| SQL[Azure SQL primary<br/>Tenant configuration, sessions and usage]
+  AB -->|Private TLS with cross-region routing| SQL
+  AA -->|Private endpoint| AI[Shared Azure Foundry model<br/>Tenant context per request]
+  AB -->|Private endpoint| AI
+  AA --> MON[Azure Monitor and Log Analytics<br/>Latency, errors, throughput and token usage]
+  AB --> MON
+```
+
+Application Gateway inspects HTTP requests and forwards allowed traffic to the
+internal Container Apps environment. Configure backend DNS, TLS host names,
+certificates and health probes correctly, and restrict backend access to the gateway
+network. Unlike the tunnel deployment, this variant needs managed app ingress
+reachable from the gateway's VNet. Remove the cloudflared sidecar in that variant.
+
+Traffic Manager does not proxy traffic, terminate TLS or provide a WAF. DNS caching,
+TTL and health detection affect failover time; existing connections do not move
+automatically. Both gateways need certificates for the public application hostname.
+See Microsoft's [Application Gateway overview](https://learn.microsoft.com/en-us/azure/application-gateway/overview)
+and [multiregion design](https://learn.microsoft.com/en-us/azure/architecture/high-availability/traffic-manager-application-gateway).
+
+Start with one regional gateway if Azure-native ingress is required. Traffic Manager
+adds meaningful regional failover only when a second working endpoint exists.
+The optional standby above still depends on the primary SQL database and shared
+model, so it does **not** survive a full primary-region outage. That would require a
+tested SQL replication/failover design, a secondary model deployment with available
+quota, regional secrets and coordinated application recovery. Gateway `/live` probes
+alone cannot establish that those dependencies are usable.
+
+Multiple customers still share app replicas and the model endpoint. Authentication
+resolves each tenant, and SQL coordinates permissions, configuration and token limits.
+Gateway scaling does not increase model quota or database capacity. Monitor each
+layer before adding replicas or capacity.
+
+**Cost note:** Application Gateway WAF_v2 and Traffic Manager are paid services.
+A second region adds compute and networking costs. This diagram is an Azure-native
+option for future requirements, not a free replacement for the current Cloudflare edge.

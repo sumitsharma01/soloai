@@ -203,6 +203,8 @@ Terraform is the supported private-edge deployment. Cloudflare Free + Tunnel is 
 
 ## Architecture
 
+For an optional Azure-only design, see [Traffic Manager + Application Gateway WAF](docs/ARCHITECTURE.md#azure-native-alternative-traffic-manager-and-application-gateway). This is a documented alternative, not deployed infrastructure.
+
 ```mermaid
 flowchart LR
   I[Internet] --> F[Cloudflare Free + Tunnel]
