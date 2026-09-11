@@ -220,7 +220,7 @@ flowchart LR
 
   U -->|"1. Send HTTPS request"| C
   C -->|"2. Forward through encrypted tunnel"| T
-  T -->|"3. Deliver to localhost:8000"| A
+  T -->|"3. Forward to SoloAI"| A
   A <-->|"4. Check tenant and token budget"| D
   A <-->|"5. Send tenant context / receive AI reply"| F
   A -.->|"6. Record execution metrics"| M
