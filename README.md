@@ -6,6 +6,14 @@ An Azure-oriented SaaS MVP for connecting an existing application to a small, pe
 
 **Connect app → Choose agent → Add business guidance → Review permissions → Turn on.**
 
+## A little help from SoloAI
+
+You make the lemonade. SoloAI helps with the rest.
+
+[![A busy lemonade seller gets help from a fairy sent by the SoloAI cloud.](docs/media/soloai-lemonade.gif)](docs/media/soloai-lemonade.mp4)
+
+[Watch or download the 16-second video (MP4)](docs/media/soloai-lemonade.mp4). A simple product illustration, with no audio.
+
 ## Run without cloud charges
 
 Explore proposed workflows in [Use cases](use-cases/README.md), including ecommerce email triage with Kafka and human review.
