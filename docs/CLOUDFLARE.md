@@ -7,13 +7,44 @@ separate. At least one app replica runs continuously for the tunnel.
 
 ```mermaid
 flowchart LR
-  User[Internet client] --> CF[Cloudflare Free: HTTPS and limited WAF]
-  CF --> Tunnel[Encrypted Cloudflare Tunnel]
-  Tunnel --> Connector[cloudflared sidecar]
-  Connector -->|localhost:8000| App[SoloAI: authentication and tenant limits]
-  App --> SQL[Private Azure SQL]
-  App --> Model[Private shared Foundry model]
+  U["Customer<br/>Browser or application"]
+  C["Cloudflare Free<br/>HTTPS, limited WAF and API rate limits"]
+
+  subgraph Azure["Azure region"]
+    T["Tunnel connector<br/>cloudflared sidecar"]
+    A["SoloAI on Container Apps<br/>Login, permissions and agents"]
+    D[("Azure SQL<br/>Tenant settings and usage")]
+    F["Azure Foundry<br/>Shared AI model"]
+    M["Azure Monitor<br/>Latency, errors and tokens"]
+  end
+
+  U -->|"1. Send HTTPS request"| C
+  C -->|"2. Forward through encrypted tunnel"| T
+  T -->|"3. Deliver to localhost:8000"| A
+  A <-->|"4. Check tenant and token budget"| D
+  A <-->|"5. Send tenant context / receive AI reply"| F
+  A -.->|"6. Record execution metrics"| M
+
+  classDef client fill:#F1F5F9,stroke:#64748B,color:#0F172A
+  classDef routing fill:#EFF6FF,stroke:#2563EB,color:#1E3A8A
+  classDef app fill:#ECFDF5,stroke:#059669,color:#064E3B
+  classDef data fill:#F5F3FF,stroke:#7C3AED,color:#4C1D95
+  class U client
+  class C,T routing
+  class A app
+  class D,F,M data
 ```
+
+**Read the numbered steps from 1 to 6.** Cloudflare checks the request before
+forwarding it. The connector establishes the tunnel **outbound from Azure**;
+step 2 shows the request travelling through that existing connection. The connector
+and SoloAI run in the same replica, and the app has no public ingress.
+
+The reply follows the same route back: **SoloAI → Tunnel connector → Cloudflare → Customer**.
+SQL and Foundry use private connections. SoloAI records actual token usage in SQL
+after the model call and sends operational metadata to Azure Monitor. Key Vault,
+managed identity and private DNS support the design but are omitted for readability.
+
 
 ## Terraform setup
 
