@@ -20,3 +20,6 @@ infra/main.json
 crash.log
 crash.*.log
 .venv-foundry/
+client_secret*.json
+*.key
+.secrets/

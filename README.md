@@ -49,13 +49,15 @@ taken in the live Foundry profile; its AI requests are billable.
 - Website Chat replies and Email Support drafts through an authenticated event API.
 - Per-tenant agent configuration, guidance, enable/disable and emergency stop without customer redeployment.
 - Shared Azure OpenAI/Foundry chat endpoint with managed identity. No model keys in the browser.
-- Fixed least-privilege capabilities: respond or draft; no email send/delete or customer database access.
+- Fixed least-privilege capabilities: respond or draft; optional tenant-scoped booking/policy tools, with no email send/delete or arbitrary database access.
+- Opt-in queued email events with deduplication, bounded Foundry tools, temporary review storage and operator approval/rejection. See [Email workflows](docs/EMAIL-WORKFLOWS.md).
+- Optional read-only Gmail intake with encrypted OAuth, incremental polling and a separate [Gmail incident runbook](docs/runbooks/GMAIL.md).
 - 10,000 lifetime starter tokens and 20 agent requests per minute per workspace, enforced in SQL before inference.
 - Execution status, latency, token totals, optional operator-configured cost estimate and configuration audit history.
 - Server-side JavaScript SDK, application key generation/rotation and connection instructions.
 - Minimal Terraform: Cloudflare Free + Tunnel, private Container Apps/data/model connections, managed identity, basic monitoring and Azure OIDC CI and a scoped Cloudflare API token.
 
-**Current scope:** a working local MVP and Azure deployment foundation. Azure inference is implemented but requires your configured model and credentials. There is no live Gmail/Outlook connection, email sending, billing, third-party marketplace execution, or production identity lifecycle. Planned store cards are labeled accordingly. See [security limitations](SECURITY.md) and [Azure launch steps](docs/AZURE.md).
+**Current scope:** a working local MVP and Azure deployment foundation. Azure inference is implemented but requires your configured model and credentials. An optional [read-only Gmail connector](docs/GMAIL.md) queues new inbox messages for the email review agent. Outlook, email sending, billing, third-party marketplace execution, and production identity lifecycle are not implemented. Planned store cards are labeled accordingly. See [security limitations](SECURITY.md) and [Azure launch steps](docs/AZURE.md).
 
 ## Run locally
 
@@ -88,9 +90,9 @@ const result = await solo.emit('chat.message', {
 // Return result.reply to the authenticated customer.
 ```
 
-For email, emit `email.received` with the incoming message as `content`. The response has `draft: true`; show it to a human for review. Your integration is responsible for receiving email. SoloAI does not claim to poll an inbox or create a provider-side draft.
+For email, enable [queued Email Support](docs/EMAIL-WORKFLOWS.md) and emit `email.received` with a stable `id` and the message as `content`. SoloAI returns an execution ID; the operator reviews the result in **Email review**. Without this opt-in, email events retain the original synchronous draft behavior. Your integration is responsible for receiving email. SoloAI does not poll an inbox or create a provider-side draft.
 
-Never place the SoloAI key in frontend code. Key rotation invalidates the old key immediately. Request payloads cannot supply or override a tenant ID. Events are synchronous, have no automatic retries, and do not have exactly-once semantics.
+Never place the SoloAI key in frontend code. Key rotation invalidates the old key immediately. Request payloads cannot supply or override a tenant ID. Queued email IDs are deduplicated per tenant. Chat and manual tests remain synchronous. Interrupted model calls can have uncertain usage; neither path claims exactly-once Azure inference.
 
 ## Prepared Foundry support agent
 

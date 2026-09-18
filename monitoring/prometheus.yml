@@ -4,3 +4,6 @@ scrape_configs:
   - job_name: soloai
     static_configs:
       - targets: ['127.0.0.1:9464']
+  - job_name: soloai-email-worker
+    static_configs:
+      - targets: ['127.0.0.1:9465']

@@ -4,6 +4,8 @@ SQLAlchemy==2.0.48
 psycopg[binary]==3.3.3
 httpx==0.28.1
 azure-identity==1.25.2
+aiohttp==3.14.3
+cryptography==50.0.1
 azure-ai-projects==2.3.0
 openai==2.8.1
 prometheus-client==0.23.1

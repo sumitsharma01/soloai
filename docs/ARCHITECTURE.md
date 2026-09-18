@@ -4,6 +4,13 @@
 
 ## The starting design
 
+The diagram below describes the existing Terraform deployment profile. The opt-in
+[queued Email Support profile](EMAIL-WORKFLOWS.md) extends the application with a
+PostgreSQL job table, a worker running the same codebase, two read-only tools and
+human review. It is not yet provisioned by the Azure SQL Terraform profile. Its
+numbered request diagram and deployment requirements are in that guide. The
+synchronous behavior and limitations below apply to the original profile.
+
 ```mermaid
 flowchart LR
   U["Customer<br/>Browser or application"]

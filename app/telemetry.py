@@ -4,7 +4,8 @@ import time
 import os
 
 FIELDS = {'agent', 'status', 'latency_ms', 'provider_ms', 'tokens', 'usage_kind',
-          'route', 'status_code', 'allowance_percent'}
+          'route', 'status_code', 'allowance_percent', 'agent_version', 'model', 'instructions_sha256', 'needs_human',
+          'tool_name', 'duration_ms', 'tool_calls_count'}
 
 def emit(event, **fields):
     safe = {key: value for key, value in fields.items() if key in FIELDS}

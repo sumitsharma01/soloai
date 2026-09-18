@@ -5,3 +5,6 @@
 __pycache__
 docs
 tests
+.secrets/
+client_secret*.json
+*.key

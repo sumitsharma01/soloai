@@ -9,7 +9,10 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt && useradd --create-home --uid 10001 soloai
 COPY app ./app
+COPY evals ./evals
 COPY agents/soloai-support/instructions.md ./agents/soloai-support/instructions.md
+COPY agents/soloai-email/instructions.md ./agents/soloai-email/instructions.md
+COPY scripts ./scripts
 USER 10001
 EXPOSE 8000
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log", "--no-proxy-headers"]

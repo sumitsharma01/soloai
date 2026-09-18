@@ -1,8 +1,4 @@
 import os
-os.environ.pop('AZURE_FOUNDRY_PROJECT_ENDPOINT', None)
-import os, tempfile
-os.environ['DATABASE_URL']='sqlite:///'+tempfile.mktemp(suffix='.db')
-os.environ.pop('AZURE_OPENAI_ENDPOINT',None)
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from app.main import app,engine

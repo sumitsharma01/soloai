@@ -5,9 +5,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request, HTTPException, Depends
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from sqlalchemy import create_engine, text as sql_text
 from sqlalchemy.pool import NullPool
+from sqlalchemy.exc import SQLAlchemyError
 from app.sqlserver import statement
 import httpx
 from starlette.concurrency import run_in_threadpool
@@ -23,10 +24,14 @@ if IS_SQLSERVER:
     import pyodbc
     pyodbc.pooling=False
 def text(sql): return sql_text(statement(sql) if IS_SQLSERVER else sql)
-engine = create_engine(DATABASE, pool_pre_ping=True, **({'poolclass':NullPool} if IS_SQLSERVER else {}), **({'connect_args': {'check_same_thread': False}} if DATABASE.startswith('sqlite') else {}))
+engine = create_engine(DATABASE, pool_pre_ping=True, hide_parameters=True,
+    **({'poolclass':NullPool} if IS_SQLSERVER else {}),
+    **({'connect_args': {'check_same_thread': False}} if DATABASE.startswith('sqlite') else
+       {'connect_args': {'connect_timeout':5, 'options':'-c statement_timeout=5000 -c lock_timeout=5000'}} if DATABASE.startswith('postgresql') else {}))
 from app.packages import PACKAGES
 
 def digest(s): return hashlib.sha256(s.encode()).hexdigest()
+def email_enabled(): return os.getenv('SOLOAI_EMAIL_WORKFLOWS', 'false').lower() == 'true'
 def password_hash(password, salt): return hashlib.pbkdf2_hmac('sha256', password.encode(), salt.encode(), 600000).hex()
 def init_db():
     with engine.begin() as c:
@@ -44,6 +49,16 @@ def init_db():
 @asynccontextmanager
 async def lifespan(app):
     if os.getenv('SOLOAI_INIT_SCHEMA','true').lower()=='true': init_db()
+    if email_enabled():
+        if engine.dialect.name not in ('postgresql','sqlite') or (PROD and engine.dialect.name != 'postgresql'):
+            raise RuntimeError('Production email workflows require PostgreSQL')
+        if not PROD and os.getenv('SOLOAI_INIT_SCHEMA','true').lower() == 'true':
+            from app.email_schema import migrate
+            migrate(engine)
+        from app.email_schema import versions
+        with engine.connect() as c:
+            if c.execute(versions.select().where(versions.c.version==1)).first() is None:
+                raise RuntimeError('Run python -m scripts.email_admin migrate before enabling email workflows')
     metrics_server=None
     if os.getenv('SOLOAI_METRICS_PORT'):
         from app.metrics import start
@@ -55,6 +70,13 @@ async def lifespan(app):
             metrics_server.shutdown()
             metrics_server.server_close()
 app = FastAPI(title='SoloAI', lifespan=lifespan, docs_url=None if PROD else '/docs', redoc_url=None)
+
+@app.exception_handler(SQLAlchemyError)
+async def database_failure(request, exc):
+    # SQL exceptions can embed customer values. Never include exception text in
+    # responses or let the server print the original traceback with bound parameters.
+    emit('database.unavailable', status='failed')
+    return JSONResponse({'detail':'Database temporarily unavailable'},503)
 @app.middleware('http')
 async def safeguards(request, call_next):
     if request.method in ('POST','PATCH','DELETE'):
@@ -127,7 +149,7 @@ def dashboard(t=Depends(tenant)):
         agents=[dict(r)|PACKAGES[r['id']] for r in c.execute(text('SELECT id,enabled,guidance FROM agents WHERE tenant=:t ORDER BY id DESC'),{'t':t}).mappings()]
         runs=[dict(r) for r in c.execute(text('SELECT id,agent,status,tokens,latency,created FROM executions WHERE tenant=:t ORDER BY created DESC LIMIT 30'),{'t':t}).mappings()]
         logs=[dict(r) for r in c.execute(text('SELECT action,created FROM audit WHERE tenant=:t ORDER BY created DESC LIMIT 20'),{'t':t}).mappings()]
-    return {'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Live Foundry agent • '+os.getenv('AZURE_FOUNDRY_AGENT_NAME','') if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else 'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
+    return {'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'email_workflows':email_enabled(),'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Live Foundry agent • '+os.getenv('AZURE_FOUNDRY_AGENT_NAME','') if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else 'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
 class Config(BaseModel):
     enabled: bool
     guidance: str = Field(default='',max_length=4000)
@@ -152,8 +174,17 @@ def stop(t=Depends(tenant)):
         c.execute(text('UPDATE tenants SET stopped=stopped+1 WHERE id=:t'),{'t':t});audit(c,t,'agents.emergency_stop')
     return {'ok':True}
 class Event(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
     type: str
     content: str = Field(min_length=1,max_length=8000)
+
+class IncomingEvent(Event):
+    id: str | None = Field(default=None, min_length=1, max_length=128, pattern=r'^[A-Za-z0-9_.:-]+$')
+
+def email_store():
+    if not email_enabled(): raise HTTPException(409, 'Email workflows are not enabled')
+    from app.email_store import EmailStore
+    return EmailStore(engine)
 async def execute(b,t):
     a=next((key for key,p in PACKAGES.items() if p['trigger']==b.type),None)
     if not a: raise HTTPException(400,'Unsupported event')
@@ -201,11 +232,52 @@ async def execute(b,t):
             c.execute(text('UPDATE tenants SET used=used+:adjustment WHERE id=:t'),{'adjustment':used-reserve,'t':t})
             c.execute(text('UPDATE executions SET status=:s,tokens=:u,latency=:ms WHERE id=:id AND tenant=:t'),{'s':status,'u':used,'ms':int((time.monotonic()-start)*1000),'id':run,'t':t})
             allowance=c.execute(text('SELECT used*100.0/budget FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
-        emit('agent.execution',status=status,agent=a,latency_ms=round((time.monotonic()-start)*1000),provider_ms=provider_ms,tokens=used,usage_kind=usage_kind,allowance_percent=round(allowance,2))
+        emit('agent.execution',agent_version=os.getenv('AZURE_FOUNDRY_AGENT_VERSION','direct-model'),model=os.getenv('AZURE_FOUNDRY_MODEL',os.getenv('AZURE_OPENAI_DEPLOYMENT','simulated')),instructions_sha256=digest(foundry.INSTRUCTIONS if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else PACKAGES[a]['instructions']),needs_human=needs_human if status=='completed' else None,status=status,agent=a,latency_ms=round((time.monotonic()-start)*1000),provider_ms=provider_ms,tokens=used,usage_kind=usage_kind,allowance_percent=round(allowance,2))
     if status!='completed': raise HTTPException(503,'Execution '+status)
     return {'id':run,'agent':a,'reply':reply,'draft':a=='email-support','tokens':used,'needs_human':needs_human}
 @app.post('/api/events')
-async def event(b:Event,t=Depends(api_tenant)): return await execute(b,t)
+async def event(b:IncomingEvent,t=Depends(api_tenant)):
+    if b.type == 'email.received' and b.id is not None and not email_enabled():
+        raise HTTPException(409, 'Email workflows are not enabled')
+    if b.type == 'email.received' and email_enabled():
+        if b.id is None: raise HTTPException(422, 'Email event id is required')
+        from app.email_runtime import configuration
+        from app.email_tools import EmailFailure
+        try:
+            retention = max(3600, min(int(os.getenv('SOLOAI_EMAIL_RETENTION_HOURS','168')),720)*3600)
+            result = email_store().enqueue(t, b, configuration(), retention)
+        except EmailFailure as exc:
+            raise HTTPException(429 if exc.code in ('token_allowance_exhausted','rate_limit_exceeded') else 503, exc.code) from None
+        return JSONResponse(result, status_code=200 if result['duplicate'] else 202,
+                            headers={'Location':'/api/executions/' + result['execution_id']})
+    return await execute(b,t)
+
+def execution_reader(request: Request):
+    # A customer server can poll using the same key as ingestion. Review requires
+    # the operator's session and is never authorized by an application API key.
+    return api_tenant(request) if request.headers.get('authorization') else tenant(request)
+
+@app.get('/api/executions/{execution_id}')
+def email_execution(execution_id: str, t=Depends(execution_reader)):
+    return email_store().detail(t, execution_id)
+
+@app.get('/api/email/executions')
+def email_executions(t=Depends(tenant)):
+    from app.email_schema import jobs
+    from sqlalchemy import select
+    email_store()
+    with engine.connect() as c:
+        rows = c.execute(select(jobs.c.execution_id,jobs.c.status,jobs.c.created_at,jobs.c.error)
+            .where(jobs.c.tenant==t).order_by(jobs.c.created_at.desc()).limit(50)).mappings().all()
+    return {'executions':[dict(row) for row in rows]}
+
+@app.post('/api/executions/{execution_id}/approve')
+def approve_email(execution_id: str,t=Depends(tenant)):
+    return email_store().review(t,execution_id,'APPROVED')
+
+@app.post('/api/executions/{execution_id}/reject')
+def reject_email(execution_id: str,t=Depends(tenant)):
+    return email_store().review(t,execution_id,'REJECTED')
 @app.post('/api/try')
 async def trial(b:Event,t=Depends(tenant)): return await execute(b,t)
 @app.get('/live')
@@ -221,3 +293,16 @@ def index():return FileResponse(Path(__file__).parent/'static/index.html')
 
 # Outermost user middleware includes origin and body-size rejections.
 app.add_middleware(RequestTelemetry)
+
+from app.gmail import router as gmail_router
+app.include_router(gmail_router(lambda: engine, tenant, email_enabled))
+
+@app.get('/api/evaluations')
+def evaluations(t=Depends(tenant)):
+    # Shared synthetic package evaluation only, never another tenant's executions.
+    path=Path(__file__).resolve().parents[1]/'evals/latest.json'
+    if not path.exists(): return {'available':False}
+    report=json.loads(path.read_text())
+    report['available']=True
+    report['matches_current_agent']=(report.get('instructions_sha256')==digest(foundry.INSTRUCTIONS) and report.get('model')==os.getenv('AZURE_FOUNDRY_MODEL') and report.get('version')==os.getenv('AZURE_FOUNDRY_AGENT_VERSION') and report.get('agent')==os.getenv('AZURE_FOUNDRY_AGENT_NAME'))
+    return report

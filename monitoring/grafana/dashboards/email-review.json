@@ -1,0 +1,47 @@
+{
+  "uid": "soloai-email-review",
+  "title": "SoloAI Email Review",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "10s",
+  "time": {"from": "now-1h", "to": "now"},
+  "tags": ["soloai", "email"],
+  "panels": [
+    {
+      "id": 1, "title": "Worker scrape healthy", "type": "stat",
+      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "up{job=\"soloai-email-worker\"}"}]
+    },
+    {
+      "id": 2, "title": "Operator decisions", "type": "timeseries",
+      "gridPos": {"x": 8, "y": 0, "w": 16, "h": 6},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (status) (increase(soloai_email_reviews_total[1h]))", "legendFormat": "{{status}}"}]
+    },
+    {
+      "id": 3, "title": "Tool calls per second", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (tool,status) (rate(soloai_tool_calls_total[5m]))", "legendFormat": "{{tool}} {{status}}"}]
+    },
+    {
+      "id": 4, "title": "Tool p95 latency (seconds)", "type": "timeseries",
+      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le,tool) (rate(soloai_tool_duration_seconds_bucket[5m])))", "legendFormat": "{{tool}}"}]
+    },
+    {
+      "id": 5, "title": "Worker tokens (reported versus reserved)", "type": "timeseries",
+      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum by (usage_kind) (rate(soloai_tokens_total{job=\"soloai-email-worker\"}[5m]))", "legendFormat": "{{usage_kind}}"}]
+    },
+    {
+      "id": 6, "title": "Interrupted jobs failed safely", "type": "stat",
+      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
+      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
+      "targets": [{"refId": "A", "expr": "sum(increase(soloai_email_worker_recoveries_total[1h]))"}]
+    }
+  ]
+}
