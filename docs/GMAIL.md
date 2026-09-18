@@ -52,3 +52,60 @@ verification having been completed.
 
 See Google's [web OAuth documentation](https://developers.google.com/identity/protocols/oauth2/web-server)
 and [Gmail synchronization guide](https://developers.google.com/workspace/gmail/api/guides/sync).
+
+## Local environment example
+
+First follow [queued email setup](EMAIL-WORKFLOWS.md) to configure Foundry, enable Email Support and start the queue database. Use the same environment in API and worker terminals:
+
+```sh
+export PUBLIC_ORIGIN=http://127.0.0.1:8300
+export SOLOAI_EMAIL_WORKFLOWS=true
+export GMAIL_CLIENT_FILE=/absolute/private/path/google-web-client.json
+export GMAIL_TOKEN_KEY_FILE=/absolute/private/path/gmail-token.key
+# Generate once, never overwrite an existing connection's key:
+python -m scripts.gmail_key "$GMAIL_TOKEN_KEY_FILE"
+python -m scripts.email_admin migrate
+# API terminal:
+SOLOAI_METRICS_PORT=9470 uvicorn app.main:app --host 127.0.0.1 --port 8300 --workers 1 --no-access-log --no-proxy-headers
+# Separate worker terminal with the same environment:
+SOLOAI_METRICS_PORT=9471 python -m app.email_worker
+```
+
+Do not use an API key or Gmail password instead of OAuth. The Google project owner and the Gmail mailbox owner can be different accounts. Enable Gmail API in the OAuth client's project, then authorize with the mailbox account. A downloaded client JSON does not by itself enable Gmail API.
+
+## Request flow
+
+```mermaid
+flowchart TD
+    G[Gmail inbox] -->|1. Read new mail with OAuth| W[Email worker]
+    W -->|2. Deduplicate and enqueue| D[(Tenant-scoped SQL queue)]
+    D -->|3. Claim job and reserve budget| W
+    W <-->|4. Instructions and bounded tool loop| F[Shared Azure Foundry email agent]
+    W <-->|5. Authorized booking and policy lookups| T[Tenant support data]
+    W -->|6. Save draft and usage| D
+    D -->|7. Through authenticated SoloAI API| U[Human review dashboard]
+```
+
+SQLite is for local development. Production email workflows require PostgreSQL; the default Azure SQL Terraform profile is not compatible with this opt-in workflow without infrastructure changes. There is no automatic email sending, live booking modification, attachment processing, old-inbox backfill or automatic retraining.
+
+## Screenshots from the local setup
+
+Connected read-only mailbox and last sync:
+
+![Gmail connected in SoloAI](screenshots/gmail-connected.png)
+
+Email queue with human review:
+
+![Email review queue](screenshots/gmail-email-review.png)
+
+Agent dashboard with usage and execution status:
+
+![Updated SoloAI dashboard](screenshots/gmail-dashboard.png)
+
+These are local demo screenshots. They do not show OAuth secrets or customer email bodies. The connected test mailbox is shown intentionally. A successful connection confirms OAuth setup; verify new-message processing separately.
+
+## Troubleshooting and launch requirements
+
+Use the [Gmail runbook](runbooks/GMAIL.md) for OAuth errors, missing permissions, expired requests and inbox sync. Use the [local demo runbook](runbooks/LOCAL-DEMO.md) for ports, login, Foundry and Grafana.
+
+Before public launch, complete applicable Google verification for restricted Gmail scopes, review data-use requirements, use HTTPS callbacks, manage secrets outside the image, and restrict database access. Testing mode is not a production identity or token-lifetime guarantee. See [Google scope guidance](https://developers.google.com/workspace/gmail/api/auth/scopes).

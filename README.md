@@ -51,7 +51,6 @@ taken in the live Foundry profile; its AI requests are billable.
 - Shared Azure OpenAI/Foundry chat endpoint with managed identity. No model keys in the browser.
 - Fixed least-privilege capabilities: respond or draft; optional tenant-scoped booking/policy tools, with no email send/delete or arbitrary database access.
 - Opt-in queued email events with deduplication, bounded Foundry tools, temporary review storage and operator approval/rejection. See [Email workflows](docs/EMAIL-WORKFLOWS.md).
-- Optional read-only Gmail intake with encrypted OAuth, incremental polling and a separate [Gmail incident runbook](docs/runbooks/GMAIL.md).
 - 10,000 lifetime starter tokens and 20 agent requests per minute per workspace, enforced in SQL before inference.
 - Execution status, latency, token totals, optional operator-configured cost estimate and configuration audit history.
 - Server-side JavaScript SDK, application key generation/rotation and connection instructions.
@@ -311,3 +310,15 @@ Enable `TERRAFORM_DELIVERY_ENABLED` only after configuring identities, state and
 
 [Local monitoring instructions](monitoring/README.md) run optional Prometheus and
 Grafana alongside the live platform, without deploying Azure hosting infrastructure.
+
+## Gmail intake and email review
+
+Connect a Gmail inbox once through OAuth. SoloAI polls new inbox messages, queues them for the Foundry email agent, and saves drafts for human review. The worker can use tenant-scoped booking and policy tools. Approval records a decision; it does not send mail.
+
+- [Gmail setup, environment variables and screenshots](docs/GMAIL.md)
+- [Queued email agent and deployment boundaries](docs/EMAIL-WORKFLOWS.md)
+- [Operations runbooks](docs/runbooks/README.md): Google consent, callback failures, sync, local startup, Foundry and Grafana
+
+![Connected Gmail setup](docs/screenshots/gmail-connected.png)
+
+Gmail requires read-only OAuth consent, an enabled Gmail API, a running worker and a persistent encryption key. Existing emails are not imported. The email workflow uses SQLite locally and requires PostgreSQL in production; do not enable it unchanged on the default Azure SQL Terraform profile.
