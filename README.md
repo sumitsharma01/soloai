@@ -322,3 +322,13 @@ Connect a Gmail inbox once through OAuth. SoloAI polls new inbox messages, queue
 ![Connected Gmail setup](docs/screenshots/gmail-connected.png)
 
 Gmail requires read-only OAuth consent, an enabled Gmail API, a running worker and a persistent encryption key. Existing emails are not imported. The email workflow uses SQLite locally and requires PostgreSQL in production; do not enable it unchanged on the default Azure SQL Terraform profile.
+
+## Optional booking MCP connector
+
+The queued email agent can read bookings through a tenant-scoped MCP connection. Gmail intake, permissions, token limits and human review remain in SoloAI. Start with the [MCP setup guide](docs/MCP.md) and [MCP runbook](docs/runbooks/MCP.md). Operator-managed configuration only; arbitrary MCP servers and write actions are not supported.
+
+![SoloAI with the optional MCP booking connector](docs/screenshots/mcp-architecture.svg)
+
+![MCP booking connection in SoloAI](docs/screenshots/mcp-booking-panel.png)
+
+The local acceptance run used the live Foundry email agent and a synthetic MCP booking server. It produced a review-only draft. The connector is not yet wired to a real booking vendor.

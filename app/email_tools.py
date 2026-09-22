@@ -92,7 +92,7 @@ TOOLS = {
 class ToolGateway:
     def __init__(self, store, context, booking_source=None, timeout=5):
         self.store, self.context = store, context
-        self.booking_source = booking_source or DatabaseBookingSource(store.engine)
+        self.booking_source = booking_source
         self.timeout = timeout
         self.seen = set()
         self.count = 0
@@ -147,7 +147,9 @@ class ToolGateway:
     async def execute(self, name, args):
         tenant = self.context['tenant']
         if name == 'get_booking':
-            return await self.booking_source.get_booking(tenant, args.booking_id)
+            from app.mcp_booking import booking_source
+            source = self.booking_source or booking_source(self.store.engine, tenant)
+            return await source.get_booking(tenant, args.booking_id)
         return await asyncio.to_thread(self._search_policy, tenant, args.query)
 
     def _search_policy(self, tenant, query):

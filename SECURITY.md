@@ -21,3 +21,11 @@ has no database credentials, HTTP tool, SQL tool, shell, or permission to send e
 An interrupted inference is failed visibly rather than replayed; unknown token costs
 remain reserved. Existing identity lifecycle, backup, runtime-role and deployment
 limitations still apply. This change is not a security certification.
+
+Optional MCP booking access is operator-configured per tenant. The fixed read-only
+get_booking tool uses a distinct tenant credential, approved URL, bounded transport,
+validated output and the existing tool gateway. No arbitrary remote tool discovery
+or model-supplied endpoint is supported. The remote server must enforce tenant
+permissions; MCP alone does not establish isolation or stop prompt injection.
+Production requires HTTPS, protected secret mounts and egress restrictions. See
+[the MCP security boundaries](docs/MCP.md) and [MCP runbook](docs/runbooks/MCP.md).

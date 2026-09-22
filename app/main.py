@@ -306,3 +306,16 @@ def evaluations(t=Depends(tenant)):
     report['available']=True
     report['matches_current_agent']=(report.get('instructions_sha256')==digest(foundry.INSTRUCTIONS) and report.get('model')==os.getenv('AZURE_FOUNDRY_MODEL') and report.get('version')==os.getenv('AZURE_FOUNDRY_AGENT_VERSION') and report.get('agent')==os.getenv('AZURE_FOUNDRY_AGENT_NAME'))
     return report
+
+@app.get('/api/integrations/booking')
+def booking_integration(t=Depends(tenant)):
+    from app.mcp_booking import connection
+    from app.email_tools import EmailFailure
+    try:
+        configured = connection(t) is not None
+        return {'mode': 'MCP booking' if configured else 'Local support snapshot',
+                'configured': configured, 'read_only': True,
+                'note': 'Configuration status only. A booking lookup verifies connectivity.'}
+    except EmailFailure:
+        return {'mode': 'Configuration error', 'configured': False, 'read_only': True,
+                'note': 'Ask the operator to check the MCP configuration. Lookups fail closed.'}

@@ -238,3 +238,7 @@ Tests inject a provider and do not call Azure. A live acceptance run must additi
 verify the deployed agent definition, credential permissions, tool loop, token usage
 and review UI against synthetic data. Automated tests alone do not establish live
 Azure connectivity or production readiness.
+
+## Optional external booking source
+
+Use the [curated MCP booking adapter](MCP.md) to replace local snapshot lookup for selected workspaces. It preserves the existing get_booking contract and tool limits. Configuration failure stops the lookup rather than falling back.

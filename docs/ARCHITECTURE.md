@@ -255,3 +255,9 @@ layer before adding replicas or capacity.
 **Cost note:** Application Gateway WAF_v2 and Traffic Manager are paid services.
 A second region adds compute and networking costs. This diagram is an Azure-native
 option for future requirements, not a free replacement for the current Cloudflare edge.
+
+## Optional MCP booking path
+
+![MCP booking architecture](screenshots/mcp-architecture.svg)
+
+The email worker's existing tool gateway can route get_booking through a tenant-scoped MCP client. Policy search stays local. Azure Foundry receives validated results, never connector credentials. Configuration and limitations are in [MCP.md](MCP.md). This adds no Azure resource and does not change the production PostgreSQL requirement for queued email.

@@ -10,6 +10,17 @@ function mountEmailReview(state) {
   gmailButton.textContent = 'Connect Gmail';
   gmailButton.onclick = showGmailConnection;
   nav.append(gmailButton);
+  const bookingButton = document.createElement('button');
+  bookingButton.textContent = 'Booking integration';
+  bookingButton.onclick = async () => {
+    const page = document.querySelector('#page');
+    page.innerHTML = '<section class="panel"><h2>Booking integration</h2><p id="booking-status">Loading…</p><p>Read-only booking lookup. Your operator configures the approved connection for your workspace. Booking changes and automatic email sending are not available.</p></section>';
+    try {
+      const state = await api('integrations/booking');
+      document.querySelector('#booking-status').textContent = state.mode + '. ' + state.note;
+    } catch (error) { document.querySelector('#booking-status').textContent = error.message; }
+  };
+  nav.append(bookingButton);
   // Existing transient /api/try remains available. Explain the explicitly enabled
   // durable inbox separately so legacy privacy badges are not misleading.
   document.querySelectorAll('.chip').forEach(chip => {

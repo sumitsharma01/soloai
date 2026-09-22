@@ -9,3 +9,5 @@ Never attach OAuth callback URLs, cookies, tokens, customer messages or database
 | API, worker, Foundry and monitoring | [Local demo](LOCAL-DEMO.md) | Application operator |
 
 For incidents record the time, environment, safe error code, affected component, action taken and recovery check. Treat a connected mailbox, a healthy sync, and a successful model execution as three separate checks.
+
+- [Booking MCP](MCP.md): configuration, authentication, tenant isolation and tool failures.
