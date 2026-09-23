@@ -2,13 +2,17 @@
 import json
 import time
 import os
+from decimal import Decimal
 
 FIELDS = {'agent', 'status', 'latency_ms', 'provider_ms', 'tokens', 'usage_kind',
           'route', 'status_code', 'allowance_percent', 'agent_version', 'model', 'instructions_sha256', 'needs_human',
           'tool_name', 'duration_ms', 'tool_calls_count'}
 
 def emit(event, **fields):
-    safe = {key: value for key, value in fields.items() if key in FIELDS}
+    # PostgreSQL numeric expressions return Decimal; SQLite returns float.
+    # Normalize operational measurements before both Prometheus and JSON output.
+    safe = {key: float(value) if isinstance(value, Decimal) else value
+            for key, value in fields.items() if key in FIELDS}
     if os.getenv('SOLOAI_METRICS_PORT'):
         from app.metrics import observe
         observe(event,safe)
