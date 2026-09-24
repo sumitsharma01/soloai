@@ -45,7 +45,8 @@ Open **Integrations** in SoloAI. It is the starting point for connections and th
 | Gmail | Sign in with Google once your SoloAI operator has configured Gmail. Read new inbox messages and prepare drafts. No sending or deleting. |
 | Booking information | Read-only lookup through an approved MCP connection configured by your operator, or a local support snapshot. |
 | Your application | Optional server API for custom events. Kept under the developer section. |
-| Supabase, Outlook and other services | Planned. Self-service connections are not available yet. |
+| Supabase | [Guided setup form](docs/SUPABASE.md) for booking data. Saves a workspace request; authorization and database access are pending operator implementation. |
+| Outlook and other services | Planned. |
 
 You do not need to give SoloAI access to your AWS or Vercel account just because your website runs there. Connect the mailbox or approved business data the agent needs instead.
 

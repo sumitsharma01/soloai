@@ -37,6 +37,7 @@ def init_db():
     with engine.begin() as c:
         for sql in [
           'CREATE TABLE IF NOT EXISTS tenants (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, salt TEXT NOT NULL, password TEXT NOT NULL, name TEXT NOT NULL, used INTEGER NOT NULL DEFAULT 0, budget INTEGER NOT NULL DEFAULT 10000, "window" BIGINT NOT NULL DEFAULT 0, requests INTEGER NOT NULL DEFAULT 0, stopped INTEGER NOT NULL DEFAULT 0)',
+          'CREATE TABLE IF NOT EXISTS supabase_setups (tenant TEXT PRIMARY KEY REFERENCES tenants(id), configuration TEXT NOT NULL)',
           'CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES tenants(id), expires BIGINT NOT NULL)',
           'CREATE TABLE IF NOT EXISTS api_keys (token TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES tenants(id))',
           'CREATE TABLE IF NOT EXISTS agents (tenant TEXT NOT NULL REFERENCES tenants(id), id TEXT NOT NULL, enabled INTEGER NOT NULL DEFAULT 0, guidance TEXT NOT NULL DEFAULT \'\', PRIMARY KEY (tenant,id))',
@@ -319,3 +320,6 @@ def booking_integration(t=Depends(tenant)):
     except EmailFailure:
         return {'mode': 'Configuration error', 'configured': False, 'read_only': True,
                 'note': 'Ask the operator to check the MCP configuration. Lookups fail closed.'}
+
+from app.supabase_setup import router as supabase_router
+app.include_router(supabase_router(engine, tenant, text, audit))

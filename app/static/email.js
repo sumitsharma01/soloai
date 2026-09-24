@@ -118,13 +118,14 @@ async function showIntegrations() {
   <div class="agents">
     <section class="card"><div class="icon email">✉</div><h2>Gmail</h2><p>Read new customer emails and prepare drafts for your review. No sending or deleting.</p><p id="gmail-summary" role="status">Checking connection…</p><button class="primary" id="open-gmail">Connect with Google</button></section>
     <section class="card"><div class="icon">⌁</div><h2>Booking information</h2><p>Let the email agent look up a booking through an approved, read-only connection.</p><p id="booking-summary" role="status">Checking connection…</p><p>Your SoloAI operator sets up this connection for your workspace. Self-service setup is not available yet.</p></section>
+    <section class="card"><div class="icon">⌁</div><h2>Supabase</h2><p>Tell us where your booking data lives and what the email agent may read.</p><p>Guided setup. Authorization requires operator configuration.</p><button class="primary" id="open-supabase">Set up Supabase</button></section>
   </div><details class="panel"><summary>Planned integrations</summary><div class="agents">
-    <section class="card"><span class="chip">Planned</span><h2>Supabase</h2><p>Connect selected business data with limited access. Supabase sign-in and database setup are not available in this version.</p><button disabled>Coming soon</button></section>
     <section class="card"><span class="chip">Planned</span><h2>More tools</h2><p>Outlook and other services will appear here as their connectors become available.</p><button disabled>Coming soon</button></section>
   </div></details><section class="panel"><h2>Next: try your agent</h2><p>Open My agents, add your business guidance and turn on the agent. With Gmail and the email worker configured, new messages appear in Email review. Approval records your decision; it does not send the reply.</p><details><summary>For developers: connect your own application</summary><p>Use the server API when you need to send events from your app. This is optional for Gmail.</p><button id="open-api">Application API setup</button></details></section>`;
   const connect = page.querySelector('#open-gmail');
   connect.onclick = () => beginGmailConnection(connect);
   page.querySelector('#open-api').onclick = showApplicationConnection;
+  page.querySelector('#open-supabase').onclick = showSupabaseSetup;
   const gmail = page.querySelector('#gmail-summary');
   const booking = page.querySelector('#booking-summary');
   await Promise.all([
@@ -146,4 +147,49 @@ async function beginGmailConnection(button) {
     window.location.assign(result.url);
   } catch (error) { toast(error.message); }
   finally { button.disabled = false; }
+}
+
+
+async function showSupabaseSetup() {
+  const page = document.querySelector('#page');
+  page.innerHTML = `<section class="panel form"><button id="back-integrations">← Integrations</button>
+    <h2>Connect your booking data</h2><p>Start with the details below. Your operator uses them to configure a restricted booking lookup.</p>
+    <p class="notice">This step saves a setup request. It does not connect to Supabase or grant database access. Do not enter passwords, API keys or real customer records.</p>
+    <form id="supabase-setup">
+      <label>Project URL<input name="project_url" type="url" required maxlength="200" placeholder="https://your-project.supabase.co"></label>
+      <label>Booking table<input name="table_name" required maxlength="63" placeholder="bookings"></label>
+      <label>Booking reference column<input name="reference_column" required maxlength="63" placeholder="booking_reference"></label>
+      <label>Customer identifier column<input name="customer_column" required maxlength="63" placeholder="customer_id"></label>
+      <label>Fields the agent may read<input name="allowed_fields" required maxlength="1279" placeholder="status, arrival_date, departure_date"></label>
+      <p>Separate column names with commas. Include only information needed to answer booking questions.</p>
+      <label>Which bookings belong to this business?<textarea name="ownership_rule" required minlength="10" maxlength="1000" placeholder="For example: this project belongs only to our hotel, or records are restricted by business_id."></textarea></label>
+      <label>How should a customer prove they may see a booking?<textarea name="verification_rule" required minlength="10" maxlength="1000" placeholder="For example: require a verified customer session. A booking reference alone is not proof of identity."></textarea></label>
+      <div class="check">Allowed action <b>Read booking details only</b></div>
+      <label><input type="checkbox" required> I understand that this saves requirements, and access must be configured and tested before the agent can use them.</label>
+      <button class="primary" type="submit">Save and request setup</button>
+    </form><p id="supabase-result" role="status">Loading saved details…</p></section>`;
+  page.querySelector('#back-integrations').onclick = showIntegrations;
+  const form = page.querySelector('#supabase-setup');
+  const result = page.querySelector('#supabase-result');
+  const submit = form.querySelector('button[type="submit"]');
+  submit.disabled = true;
+  try {
+    const saved = await api('integrations/supabase');
+    if (!form.isConnected) return;
+    for (const [key,value] of Object.entries(saved.configuration || {})) {
+      if (form.elements.namedItem(key)) form.elements.namedItem(key).value = Array.isArray(value) ? value.join(', ') : value;
+    }
+    result.textContent = saved.configuration ? 'Setup requested. Authorization pending. You can update the details below.' : 'No setup request saved yet.';
+    submit.disabled = false;
+  } catch (error) { result.textContent = error.message + ' Reload this page to try again.'; }
+  form.onsubmit = async event => {
+    event.preventDefault(); submit.disabled = true;
+    const values = Object.fromEntries(new FormData(form));
+    values.project_url = values.project_url.trim().replace(/\/$/, '');
+    for (const key of ['table_name','reference_column','customer_column']) values[key] = values[key].trim();
+    values.allowed_fields = [...new Set(values.allowed_fields.split(',').map(x => x.trim()).filter(Boolean))];
+    try { const response = await api('integrations/supabase/setup','POST',values); result.textContent = response.message; }
+    catch (error) { result.textContent = error.message; }
+    finally { submit.disabled = false; }
+  };
 }

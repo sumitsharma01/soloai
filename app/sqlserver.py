@@ -8,6 +8,7 @@ def statement(sql):
         sql=re.sub(r'\b(id|tenant|token|salt|password) NVARCHAR\(255\)', r'\1 VARCHAR(64)',sql)
         sql=sql.replace('key NVARCHAR(255)','key VARCHAR(128)')
         sql=sql.replace('guidance NVARCHAR(255)','guidance NVARCHAR(MAX)')
+        sql=sql.replace('configuration NVARCHAR(255)','configuration NVARCHAR(MAX)')
         sql=f"IF OBJECT_ID(N'dbo.{name}', N'U') IS NULL BEGIN {sql} END"
     elif sql.startswith('CREATE INDEX IF NOT EXISTS '):
         name=sql.split()[5]
