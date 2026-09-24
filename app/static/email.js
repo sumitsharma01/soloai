@@ -6,21 +6,6 @@ function mountEmailReview(state) {
   button.textContent = '✉ Email review';
   button.onclick = showEmailReview;
   nav.append(button);
-  const gmailButton = document.createElement('button');
-  gmailButton.textContent = 'Connect Gmail';
-  gmailButton.onclick = showGmailConnection;
-  nav.append(gmailButton);
-  const bookingButton = document.createElement('button');
-  bookingButton.textContent = 'Booking integration';
-  bookingButton.onclick = async () => {
-    const page = document.querySelector('#page');
-    page.innerHTML = '<section class="panel"><h2>Booking integration</h2><p id="booking-status">Loading…</p><p>Read-only booking lookup. Your operator configures the approved connection for your workspace. Booking changes and automatic email sending are not available.</p></section>';
-    try {
-      const state = await api('integrations/booking');
-      document.querySelector('#booking-status').textContent = state.mode + '. ' + state.note;
-    } catch (error) { document.querySelector('#booking-status').textContent = error.message; }
-  };
-  nav.append(bookingButton);
   // Existing transient /api/try remains available. Explain the explicitly enabled
   // durable inbox separately so legacy privacy badges are not misleading.
   document.querySelectorAll('.chip').forEach(chip => {
@@ -47,7 +32,7 @@ async function showGmailConnection() {
     const summary = document.createElement('p');
     summary.textContent = state.connected ? `Connected: ${state.email}. Last sync: ${state.last_sync ? new Date(state.last_sync*1000).toLocaleString() : 'Waiting for first sync'}. Status: ${state.error || 'Ready'}` : 'No mailbox connected.';
     target.append(summary);
-    if (!state.available) { target.append(document.createTextNode('Google OAuth must be configured on the server.')); return; }
+    if (!state.available) { target.append(document.createTextNode('Gmail is not set up on this SoloAI installation yet. Ask the person running SoloAI to complete the Gmail setup guide. You can still try an agent from My agents.')); return; }
     if (!state.connected) {
       const input = document.createElement('input'); input.type = 'email'; input.placeholder = 'Your Gmail address'; input.setAttribute('aria-label','Gmail address');
       const connect = document.createElement('button'); connect.textContent = 'Connect with Google';
@@ -76,7 +61,7 @@ async function showEmailReview() {
   try {
     const result = await api('email/executions');
     if (!list.isConnected) return;
-    list.textContent = result.executions.length ? '' : 'No forwarded emails yet. Send an email.received event with a unique id to /api/events.';
+    list.textContent = result.executions.length ? '' : 'No emails yet. Connect Gmail in Integrations, then send a new message to that inbox.';
     for (const execution of result.executions) {
       const row = document.createElement('p');
       const open = document.createElement('button');
@@ -129,4 +114,24 @@ async function showEmailExecution(id) {
       }
     }
   } catch (error) { target.textContent = error.message; }
+}
+
+// Connection status comes from the signed-in workspace, never a browser tenant ID.
+async function showIntegrations() {
+  const page = document.querySelector('#page');
+  page.innerHTML = `<section class="panel"><h2>Your tools, in one place</h2><p>Your website can stay on Vercel, AWS or wherever you host it. Connect only the information your agent needs.</p><div class="steps"><span>1 Choose a tool</span><span>2 Review access</span><span>3 Connect</span></div></section>
+  <div class="agents">
+    <section class="card"><div class="icon email">✉</div><h2>Gmail</h2><p>Read new customer emails and prepare drafts for your review. No sending or deleting.</p><p id="gmail-summary" role="status">Checking connection…</p><button id="open-gmail">View connection</button></section>
+    <section class="card"><div class="icon">⌁</div><h2>Booking information</h2><p>Let the email agent look up a booking through an approved, read-only connection.</p><p id="booking-summary" role="status">Checking connection…</p><p>Your SoloAI operator sets up this connection for your workspace. Self-service setup is not available yet.</p></section>
+    <section class="card"><span class="chip">Planned</span><h2>Supabase</h2><p>Connect selected business data with limited access. Supabase sign-in and database setup are not available in this version.</p><button disabled>Coming soon</button></section>
+    <section class="card"><span class="chip">Planned</span><h2>More tools</h2><p>Outlook and other services will appear here as their connectors become available.</p><button disabled>Coming soon</button></section>
+  </div><section class="panel"><h2>Next: try your agent</h2><p>Open My agents, add your business guidance and turn on the agent. With Gmail and the email worker configured, new messages appear in Email review. Approval records your decision; it does not send the reply.</p><details><summary>For developers: connect your own application</summary><p>Use the server API when you need to send events from your app. This is optional for Gmail.</p><button id="open-api">Application API setup</button></details></section>`;
+  page.querySelector('#open-gmail').onclick = showGmailConnection;
+  page.querySelector('#open-api').onclick = showApplicationConnection;
+  const gmail = page.querySelector('#gmail-summary');
+  const booking = page.querySelector('#booking-summary');
+  await Promise.all([
+    api('integrations/gmail').then(s => { gmail.textContent = s.connected ? `Connected: ${s.email}` : s.available ? 'Ready to connect with Google' : 'Setup needed by your SoloAI operator'; }).catch(e => { gmail.textContent = e.message; }),
+    api('integrations/booking').then(s => { booking.textContent = `${s.mode}. ${s.note}`; }).catch(e => { booking.textContent = e.message; })
+  ]);
 }

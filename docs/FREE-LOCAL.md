@@ -12,7 +12,7 @@ flowchart LR
     Auth --> DB[Local SQLite]
     Auth --> Demo[Simulated support replies and email drafts]
     Demo --> Browser
-    App --> Metrics[Loopback metrics :9464]
+    App -. Optional .-> Metrics[Loopback metrics :9464]
     Prometheus[Local Prometheus :9090] --> Metrics
     Grafana[Local Grafana :3000] --> Prometheus
 ```
@@ -28,8 +28,7 @@ flowchart LR
 
 ## Start
 
-Activate the virtual environment in the README, install requirements, stop any
-existing process using ports 8000 and 9464, then run:
+With Python 3.13 installed, run this from the repository root:
 
 ```bash
 bash scripts/run-free-local.sh
@@ -38,7 +37,10 @@ bash scripts/run-free-local.sh
 Open http://127.0.0.1:8000 and create a workspace. This profile uses a separate
 `soloai-free.db` so your live profile and existing data remain intact. Add business
 guidance and enable agents. Replies are labelled simulated. Monitoring is started
-separately using [the local monitoring guide](../monitoring/README.md).
+separately using [the local monitoring guide](../monitoring/README.md). To expose
+metrics for that optional setup, start the preview with
+`SOLOAI_LOCAL_METRICS_PORT=9464 bash scripts/run-free-local.sh`. The default preview
+does not open a metrics port.
 
 Passwords are hashed; login cookies are HTTP-only and SameSite Strict. Tenant checks,
 body limits, origin checks, agent permissions, quotas and emergency stop remain active.

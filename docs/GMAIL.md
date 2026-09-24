@@ -1,5 +1,8 @@
 # Connect a Gmail inbox
 
+This guide is for the person running SoloAI. To use a configured instance, start with [Getting started](GETTING-STARTED.md) and open **Integrations** in the app.
+
+
 Gmail intake is read-only. SoloAI reads new inbox messages, forwards them to the
 existing email queue, and produces drafts for operator review. It does not create
 Gmail drafts, send mail, change labels, or delete messages. Forwarded content is

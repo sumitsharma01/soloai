@@ -1,5 +1,8 @@
 # Read-only booking integration with MCP
 
+This guide is for the person running SoloAI. To use a configured instance, start with [Getting started](GETTING-STARTED.md) and open **Integrations** in the app.
+
+
 SoloAI can use one curated MCP booking tool in its queued email agent. The founder sees **Booking integration** in the dashboard. An operator configures the connection; the model cannot enter a server URL, select a tenant, or install tools.
 
 This first release supports Streamable HTTP and the fixed `get_booking` contract. It uses the official Python MCP SDK, pinned to the supported 1.x line. Gmail continues to use its existing OAuth connector. Policy lookup stays local. No new Azure service is required.
