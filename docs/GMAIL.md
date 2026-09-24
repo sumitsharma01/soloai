@@ -20,7 +20,7 @@ processed by the configured Azure Foundry agent and follows email-review retenti
    key while encrypted connections exist. Use your secret manager in production.
 6. Run `python -m scripts.email_admin migrate` to apply additive migration 002.
    Restart the API and email worker with the same configuration.
-7. Sign in to SoloAI, open **Connect Gmail**, enter your Gmail address, and complete
+7. Sign in to SoloAI, open **Integrations**, click **Connect with Google**, and complete
    Google's consent flow. Google sign-in and consent are performed by the account owner.
 
 The baseline history cursor is captured at connection time. Existing mail is not
@@ -34,8 +34,9 @@ truncating customer information.
 Refresh tokens are encrypted with a server-held Fernet key and bound to their tenant
 inside the encrypted payload. Access tokens live only in process memory. OAuth uses
 PKCE, a one-time state, a short-lived browser-binding cookie, and validation of the
-original SoloAI session. The Google mailbox must match the address entered before
-connecting. A mailbox can belong to only one workspace. Secrets, codes, message
+original SoloAI session. The mailbox is taken from Google's authenticated profile,
+not a browser-supplied address. API callers may still supply an expected address;
+when supplied, the selected mailbox must match it. A mailbox can belong to only one workspace. Secrets, codes, message
 content and token responses are not logged. Keep HTTP access logs disabled for the
 OAuth callback, including at any reverse proxy, since its query contains a code.
 

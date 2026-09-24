@@ -22,8 +22,8 @@ Replies in this mode are simulated. Use this step to explore the controls, not t
 
 ## 3. Connect Gmail on a configured instance
 
-1. Open **Integrations**, then Gmail's **View connection**.
-2. Enter your Gmail address and choose **Connect with Google**.
+1. Open **Integrations** and click Gmail's **Connect with Google**.
+2. Choose the Gmail account you want SoloAI to read.
 3. Review Google's permission screen and sign in with the mailbox you intend to connect.
 4. Return to SoloAI and check that the address is shown as connected.
 5. Enable Email Support and send a new message to the connected inbox. With the email worker running, it should appear in **Email review** after syncing and processing.

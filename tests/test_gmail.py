@@ -116,3 +116,24 @@ def test_mime_does_not_fetch_attachments():
         {'mimeType':'text/html','body':{'data':base64.urlsafe_b64encode(b'<script>SECRET</script><p>Hello</p>').decode()}}]}}
     result=gmail.message_text(message)
     assert 'Hello' in result and 'SECRET' not in result and 'ATTACHMENT' not in result
+
+
+def test_account_picker_uses_google_verified_mailbox(configured, monkeypatch):
+    s = configured
+    result = s.a.post('/api/integrations/gmail/connect', json={})
+    assert result.status_code == 200
+    query = parse_qs(urlparse(result.json()['url']).query)
+    assert 'login_hint' not in query
+    assert 'select_account' in query['prompt'][0]
+    assert query['code_challenge_method'] == ['S256']
+    def handle(request):
+        if request.url.path == '/token':
+            return httpx.Response(200, json={'access_token':'A','refresh_token':'R','scope':gmail.SCOPE})
+        return httpx.Response(200, json={'emailAddress':'selected@gmail.com','historyId':'100'})
+    mock_google(monkeypatch, handle)
+    callback = '/api/integrations/gmail/callback?state=' + query['state'][0] + '&code=CODE'
+    assert s.b.get(callback, follow_redirects=False).status_code == 400
+    assert s.a.get(callback, follow_redirects=False).status_code == 303
+    assert s.a.get('/api/integrations/gmail').json()['email'] == 'selected@gmail.com'
+    assert s.b.get('/api/integrations/gmail').json()['connected'] is False
+    assert s.a.get(callback, follow_redirects=False).status_code == 400

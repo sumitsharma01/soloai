@@ -1,4 +1,4 @@
-const root=document.querySelector('#app');let data,view='agents',selected='website-chat',register=false;
+const root=document.querySelector('#app');let data,view=new URLSearchParams(location.search).has('gmail')?'connect':'agents',selected='website-chat',register=false;
 const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function api(path,method='GET',body){const r=await fetch('/api/'+path,{method,headers:{'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{})});let d;try{d=await r.json()}catch{throw Error('The server could not complete this request. Please try again.')}if(!r.ok)throw Error(typeof d.detail==='string'?d.detail:'Please check your input');return d}
 function toast(s){const t=document.querySelector('#toast');t.textContent=s;t.style.display='block';setTimeout(()=>t.style.display='none',4500)}

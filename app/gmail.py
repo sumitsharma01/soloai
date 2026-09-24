@@ -79,7 +79,7 @@ async def google_json(client, method, url, **kwargs):
 
 class ConnectInput(BaseModel):
     model_config = ConfigDict(extra='forbid',strict=True)
-    email: str = Field(max_length=254,pattern=r'^[^\s@]+@gmail\.com$')
+    email: str | None = Field(default=None,max_length=254,pattern=r'^[^\s@]+@gmail\.com$')
 
 
 def router(get_engine, tenant_dependency, enabled):
@@ -106,12 +106,12 @@ def router(get_engine, tenant_dependency, enabled):
             c.execute(delete(states).where(states.c.tenant==t))
             c.execute(states.insert().values(state=digest(state),tenant=t,
                 session=digest(request.cookies.get('session','')),binding=digest(binding),
-                verifier=seal(cipher,t,verifier),email=body.email.lower(),expires=int(time.time())+600))
+                verifier=seal(cipher,t,verifier),email=(body.email or '').lower(),expires=int(time.time())+600))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
         url = 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode({
             'client_id':config['client_id'],'redirect_uri':callback,'response_type':'code',
-            'scope':SCOPE,'state':state,'access_type':'offline','prompt':'consent',
-            'login_hint':body.email.lower(),'code_challenge':challenge,'code_challenge_method':'S256'})
+            'scope':SCOPE,'state':state,'access_type':'offline','prompt':'select_account consent',
+            **({'login_hint':body.email.lower()} if body.email else {}),'code_challenge':challenge,'code_challenge_method':'S256'})
         from fastapi.responses import JSONResponse
         result = JSONResponse({'url':url})
         # Separate short-lived binding survives Google's top-level callback without
@@ -150,12 +150,15 @@ def router(get_engine, tenant_dependency, enabled):
                     raise EmailFailure('gmail_readonly_consent_required')
                 profile=await google_json(client,'GET',BASE+'/profile',
                     headers={'Authorization':'Bearer '+tokens['access_token']})
-                if profile['emailAddress'].lower()!=row['email']:
+                mailbox = profile['emailAddress'].lower()
+                if not mailbox.endswith('@gmail.com') or len(mailbox)>254:
+                    raise EmailFailure('gmail_personal_account_required')
+                if row['email'] and mailbox!=row['email']:
                     raise EmailFailure('gmail_wrong_account')
             # Baseline starts now. Old inbox contents are never imported automatically.
             with store.transaction(row['tenant']) as c:
                 c.execute(delete(connections).where(connections.c.tenant==row['tenant']))
-                c.execute(connections.insert().values(tenant=row['tenant'],email=row['email'],
+                c.execute(connections.insert().values(tenant=row['tenant'],email=mailbox,
                     refresh_token=seal(cipher,row['tenant'],tokens['refresh_token']),
                     history_id=profile['historyId'],next_sync=int(time.time())+60,created=int(time.time())))
                 store.audit(c,row['tenant'],'gmail.connected')
