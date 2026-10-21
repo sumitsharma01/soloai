@@ -58,7 +58,7 @@ async def lifespan(app):
             migrate(engine)
         from app.email_schema import versions
         with engine.connect() as c:
-            if c.execute(versions.select().where(versions.c.version==1)).first() is None:
+            if c.execute(versions.select().where(versions.c.version==3)).first() is None:
                 raise RuntimeError('Run python -m scripts.email_admin migrate before enabling email workflows')
     metrics_server=None
     if os.getenv('SOLOAI_METRICS_PORT'):
@@ -150,7 +150,13 @@ def dashboard(t=Depends(tenant)):
         agents=[dict(r)|PACKAGES[r['id']] for r in c.execute(text('SELECT id,enabled,guidance FROM agents WHERE tenant=:t ORDER BY id DESC'),{'t':t}).mappings()]
         runs=[dict(r) for r in c.execute(text('SELECT id,agent,status,tokens,latency,created FROM executions WHERE tenant=:t ORDER BY created DESC LIMIT 30'),{'t':t}).mappings()]
         logs=[dict(r) for r in c.execute(text('SELECT action,created FROM audit WHERE tenant=:t ORDER BY created DESC LIMIT 20'),{'t':t}).mappings()]
-    return {'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'email_workflows':email_enabled(),'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Live Foundry agent • '+os.getenv('AZURE_FOUNDRY_AGENT_NAME','') if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else 'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
+    sent_count=0
+    if email_enabled():
+        from app.inbox_schema import deliveries
+        from sqlalchemy import select, func
+        with engine.connect() as c:
+            sent_count=c.execute(select(func.count()).select_from(deliveries).where(deliveries.c.tenant==t,deliveries.c.status=='SENT')).scalar_one()
+    return {'emails_sent':sent_count,'workspace':workspace,'agents':agents,'executions':runs,'audit':logs,'email_workflows':email_enabled(),'estimated_cost_usd':round(workspace['used']*float(os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS','0'))/1000000,6) if os.getenv('ESTIMATED_USD_PER_MILLION_TOKENS') else None,'mode':'Live Foundry agent • '+os.getenv('AZURE_FOUNDRY_AGENT_NAME','') if os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') else 'Azure Foundry' if os.getenv('AZURE_OPENAI_ENDPOINT') else 'Local demo • simulated replies'}
 class Config(BaseModel):
     enabled: bool
     guidance: str = Field(default='',max_length=4000)
@@ -323,3 +329,6 @@ def booking_integration(t=Depends(tenant)):
 
 from app.supabase_setup import router as supabase_router
 app.include_router(supabase_router(engine, tenant, text, audit))
+
+from app.inbox import router as inbox_router
+app.include_router(inbox_router(email_store, tenant))

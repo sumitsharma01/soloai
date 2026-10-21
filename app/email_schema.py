@@ -63,3 +63,5 @@ def migrate(engine):
             c.execute(versions.insert().values(version=1))
         from app.gmail import migrate as migrate_gmail
         migrate_gmail(c)
+        from app.inbox_schema import migrate as migrate_inbox
+        migrate_inbox(c)

@@ -21,6 +21,8 @@ async def serve(engine):
             from app.gmail import sync_one
             await sync_one(store)
             worked = await process_one(store)
+            from app.email_delivery import automatic_one
+            worked = await automatic_one(store) or worked
             failures = 0
         except SQLAlchemyError:
             # Restore the DB first. Leases reconcile uncertain work when it returns.

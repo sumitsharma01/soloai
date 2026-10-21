@@ -38,7 +38,7 @@ class EmailStore:
         c.execute(text('INSERT INTO audit VALUES (:id,:t,:action,:now)'),
                   {'id': secrets.token_hex(16), 't': tenant, 'action': action, 'now': int(time.time())})
 
-    def enqueue(self, tenant, event, config, retention, mailbox_owner=None):
+    def enqueue(self, tenant, event, config, retention, mailbox_owner=None, source=None):
         now = int(time.time())
         fingerprint = hashlib.sha256(json.dumps(event.model_dump(), sort_keys=True).encode()).hexdigest()
         with self.transaction(tenant) as c:
@@ -69,6 +69,8 @@ class EmailStore:
                 event_digest=fingerprint, content=event.content, guidance=cfg['guidance'],
                 status='QUEUED', epoch=state, created_at=now, available_at=now,
                 expires_at=now + retention, **config))
+            from app.inbox import create_ticket
+            create_ticket(c, tenant, execution, event.content, source)
             self.audit(c, tenant, 'email.queued.' + execution)
         return {'execution_id': execution, 'status': 'QUEUED', 'duplicate': False}
 
@@ -123,6 +125,8 @@ class EmailStore:
                 c.execute(text("UPDATE executions SET status='RUNNING' WHERE id=:id AND tenant=:t"),
                           {'id': row['execution_id'], 't': row['tenant']})
                 self.audit(c, row['tenant'], 'email.running.' + row['execution_id'])
+                from app.inbox import guidance
+                row['guidance'] = (row['guidance'] or '') + guidance(c, row['tenant'], row['execution_id'])
                 return row | {'agent': 'email-support'}
 
     def reserve(self, ctx, amount):
@@ -248,6 +252,8 @@ class EmailStore:
             row = c.execute(select(jobs).where(jobs.c.tenant == tenant,
                 jobs.c.execution_id == execution)).mappings().first()
             if not row: raise HTTPException(404, 'Execution not found')
+            from app.inbox import ensure_not_sending
+            ensure_not_sending(c, tenant, execution)
             if row['status'] != 'WAITING_FOR_REVIEW': raise HTTPException(409, 'Draft is not awaiting review')
             if row['expires_at'] <= int(time.time()): raise HTTPException(409, 'Draft has expired')
             state = c.execute(text("SELECT a.enabled,t.stopped FROM agents a JOIN tenants t ON t.id=a.tenant "
@@ -279,5 +285,8 @@ class EmailStore:
                         c.execute(text("UPDATE executions SET status='FAILED' WHERE tenant=:t AND id=:id"),
                                   {'t':tenant,'id':execution})
                         self.audit(c,tenant,'email.content_expired.'+execution)
+                from app.inbox_schema import tickets
+                old_ids = select(jobs.c.execution_id).where(jobs.c.tenant==tenant,jobs.c.expires_at<=now,jobs.c.status!='RUNNING')
+                c.execute(update(tickets).where(tickets.c.tenant==tenant,tickets.c.execution_id.in_(old_ids)).values(source=None,local_guidance=''))
                 c.execute(update(jobs).where(jobs.c.tenant==tenant,jobs.c.expires_at<=now,
                     jobs.c.status!='RUNNING').values(content=None,guidance=None,subject=None,draft=None))

@@ -10,6 +10,7 @@ ALLOWANCE = Gauge('soloai_last_allowance_percent', 'Last observed workspace allo
 TOOLS = Counter('soloai_tool_calls', 'Tool attempts, without arguments or identities', ['tool','status'])
 TOOL_LATENCY = Histogram('soloai_tool_duration_seconds', 'Tool latency', ['tool'])
 REVIEWS = Counter('soloai_email_reviews', 'Operator review decisions', ['status'])
+DELIVERIES = Counter('soloai_email_deliveries', 'Gmail delivery outcomes without recipient data', ['status'])
 RECOVERIES = Counter('soloai_email_worker_recoveries', 'Interrupted jobs failed safely')
 
 def observe(event, fields):
@@ -28,6 +29,8 @@ def observe(event, fields):
         TOOL_LATENCY.labels(name).observe(fields['duration_ms']/1000)
     elif event == 'email.review' and fields['status'] in ('APPROVED','REJECTED'):
         REVIEWS.labels(fields['status']).inc()
+    elif event == 'email.delivery' and fields['status'] in ('SENT','FAILED','UNKNOWN'):
+        DELIVERIES.labels(fields['status']).inc()
     elif event == 'email.recovery':
         RECOVERIES.inc()
 
