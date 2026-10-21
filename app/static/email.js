@@ -24,13 +24,13 @@ function mountEmailReview(state) {
 
 async function showGmailConnection() {
   const page = document.querySelector('#page');
-  page.innerHTML = '<section class="panel"><h2>Gmail connection</h2><p>Read-only access. New inbox messages are sent to your Azure Foundry email agent and stored temporarily for your review. Sending requires separate authorization; SoloAI never deletes mail. Existing inbox contents are not imported.</p><div id="gmail-status" aria-live="polite">Loading…</div></section>';
+  page.innerHTML = '<section class="panel"><h2>Gmail connection</h2><p>New inbox messages are sent to your Azure Foundry email agent and stored temporarily for your review. Sending requires separate authorization; SoloAI never deletes mail. Existing inbox contents are not imported.</p><div id="gmail-status" aria-live="polite">Loading…</div></section>';
   const target = document.querySelector('#gmail-status');
   try {
     const state = await api('integrations/gmail');
     target.replaceChildren();
     const summary = document.createElement('p');
-    summary.textContent = state.connected ? `Connected: ${state.email}. Last sync: ${state.last_sync ? new Date(state.last_sync*1000).toLocaleString() : 'Waiting for first sync'}. Status: ${state.error || 'Ready'}` : 'No mailbox connected.';
+    summary.textContent = state.connected ? `Connected: ${state.email}. Last sync: ${state.last_sync ? new Date(state.last_sync*1000).toLocaleString() : 'Waiting for first sync'}. Status: ${state.error || 'Ready'}. Sending: ${state.send_authorized ? 'authorized' : 'not authorized'}` : 'No mailbox connected.';
     target.append(summary);
     if (!state.available) { target.append(document.createTextNode('Gmail is not set up on this SoloAI installation yet. Ask the person running SoloAI to complete the Gmail setup guide. You can still try an agent from My agents.')); return; }
     if (!state.connected) {
