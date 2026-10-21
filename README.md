@@ -42,7 +42,7 @@ Open **Integrations** in SoloAI. It is the starting point for connections and th
 
 | Connection | Available today |
 |---|---|
-| Gmail | Sign in with Google once your SoloAI operator has configured Gmail. Read new inbox messages and prepare drafts. No sending or deleting. |
+| Gmail | Sign in with Google once your SoloAI operator has configured Gmail. Read new inbox messages and prepare drafts. Optional send consent supports reviewed replies and explicitly enabled automatic replies. No deleting. |
 | Booking information | Read-only lookup through an approved MCP connection configured by your operator, or a local support snapshot. |
 | Your application | Optional server API for custom events. Kept under the developer section. |
 | Supabase | [Guided setup form](docs/SUPABASE.md) for booking data. Saves a workspace request; authorization and database access are pending operator implementation. |
@@ -56,11 +56,15 @@ For a managed SoloAI service, the operator sets up the Google application once a
 
 - Each workspace has its own agent settings, permissions and usage allowance.
 - Booking access is read-only. Agents do not get unrestricted database credentials.
-- Emails remain drafts. Approving a draft records your decision; it does not send it.
+- Support Inbox lets you edit and send reviewed replies. Automatic sending is off by default and requires separate consent and rules.
 - Stop controls and token limits bound agent activity.
 - Manual test content is transient. The optional email review workflow stores emails and drafts temporarily, with a configurable retention period.
 
 These controls reduce risk; they do not guarantee that an AI response is correct. See [security boundaries and limitations](SECURITY.md).
+
+## Support Inbox
+
+Review emails in a compact list, open a message to edit the reply, manage labels and save business instructions. Sending requires explicit Gmail authorization. See the [Support Inbox guide](docs/SUPPORT-INBOX.md) for setup, automation rules and recovery.
 
 ## Go beyond the preview
 
