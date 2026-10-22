@@ -1,4 +1,4 @@
-"""Read-only Gmail OAuth and incremental intake. No sending, labels, or mailbox writes."""
+"""Gmail OAuth and incremental intake. Sending consent is separate; no deletion permissions."""
 import asyncio
 import base64
 import hashlib
@@ -22,6 +22,7 @@ from app.email_store import EmailStore
 from app.email_tools import EmailFailure
 
 SCOPE = 'https://www.googleapis.com/auth/gmail.readonly'
+SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 BASE = 'https://gmail.googleapis.com/gmail/v1/users/me'
 connections = Table('gmail_connections', metadata,
     Column('tenant', String(64), primary_key=True),
@@ -78,8 +79,9 @@ async def google_json(client, method, url, **kwargs):
 
 
 class ConnectInput(BaseModel):
+    allow_send: bool = False
     model_config = ConfigDict(extra='forbid',strict=True)
-    email: str | None = Field(default=None,max_length=254,pattern=r'^[^\s@]+@gmail\.com$')
+    email: str | None = Field(default=None,max_length=254,pattern=r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
 
 def router(get_engine, tenant_dependency, enabled):
@@ -94,7 +96,9 @@ def router(get_engine, tenant_dependency, enabled):
         with engine.connect() as c:
             row = c.execute(select(connections.c.email,connections.c.last_sync,connections.c.error)
                             .where(connections.c.tenant==t)).mappings().first()
-        return {'available':available,'connected':row is not None,**(dict(row) if row else {})}
+        from app.inbox import send_permission
+        with engine.connect() as c: can_send=send_permission(c,t)
+        return {'available':available,'connected':row is not None,'send_authorized':can_send,**(dict(row) if row else {})}
 
     @routes.post('/connect')
     def connect(body:ConnectInput, request:Request, t=Depends(tenant_dependency)):
@@ -107,10 +111,14 @@ def router(get_engine, tenant_dependency, enabled):
             c.execute(states.insert().values(state=digest(state),tenant=t,
                 session=digest(request.cookies.get('session','')),binding=digest(binding),
                 verifier=seal(cipher,t,verifier),email=(body.email or '').lower(),expires=int(time.time())+600))
+            if body.allow_send:
+                from app.inbox_schema import consents
+                c.execute(delete(consents).where(consents.c.expires<int(time.time())))
+                c.execute(consents.insert().values(state=digest(state),expires=int(time.time())+600))
         challenge = base64.urlsafe_b64encode(hashlib.sha256(verifier.encode()).digest()).decode().rstrip('=')
         url = 'https://accounts.google.com/o/oauth2/v2/auth?' + urlencode({
             'client_id':config['client_id'],'redirect_uri':callback,'response_type':'code',
-            'scope':SCOPE,'state':state,'access_type':'offline','prompt':'select_account consent',
+            'scope':SCOPE + (' '+SEND_SCOPE if body.allow_send else ''),'state':state,'access_type':'offline','prompt':'select_account consent',
             **({'login_hint':body.email.lower()} if body.email else {}),'code_challenge':challenge,'code_challenge_method':'S256'})
         from fastapi.responses import JSONResponse
         result = JSONResponse({'url':url})
@@ -134,6 +142,9 @@ def router(get_engine, tenant_dependency, enabled):
             if not c.execute(text('SELECT token FROM sessions WHERE token=:s AND tenant=:t AND expires>:n'),
                 {'s':row['session'],'t':row['tenant'],'n':int(time.time())}).first():
                 raise HTTPException(401,'Sign in again before connecting Gmail')
+            from app.inbox_schema import consents
+            send_requested=c.execute(select(consents.c.state).where(consents.c.state==digest(state),consents.c.expires>int(time.time()))).first() is not None
+            c.execute(delete(consents).where(consents.c.state==digest(state)))
             consumed = c.execute(delete(states).where(states.c.state==digest(state))).rowcount
             if not consumed: raise HTTPException(400,'Gmail connection request already used')
         if request.query_params.get('error'):
@@ -146,21 +157,28 @@ def router(get_engine, tenant_dependency, enabled):
                     'client_id':config['client_id'],'client_secret':config['client_secret'],
                     'code':code,'grant_type':'authorization_code','redirect_uri':redirect,
                     'code_verifier':unseal(cipher,row['tenant'],row['verifier'])})
-                if set(tokens.get('scope','').split()) != {SCOPE} or not tokens.get('refresh_token'):
+                if set(tokens.get('scope','').split()) != ({SCOPE,SEND_SCOPE} if send_requested else {SCOPE}) or not tokens.get('refresh_token'):
                     raise EmailFailure('gmail_readonly_consent_required')
                 profile=await google_json(client,'GET',BASE+'/profile',
                     headers={'Authorization':'Bearer '+tokens['access_token']})
                 mailbox = profile['emailAddress'].lower()
-                if not mailbox.endswith('@gmail.com') or len(mailbox)>254:
-                    raise EmailFailure('gmail_personal_account_required')
+                if '@' not in mailbox or len(mailbox)>254:
+                    raise EmailFailure('gmail_invalid_mailbox')
                 if row['email'] and mailbox!=row['email']:
                     raise EmailFailure('gmail_wrong_account')
             # Baseline starts now. Old inbox contents are never imported automatically.
             with store.transaction(row['tenant']) as c:
+                old=c.execute(select(connections).where(connections.c.tenant==row['tenant'])).mappings().first()
+                encrypted=seal(cipher,row['tenant'],tokens['refresh_token'])
+                from app.inbox_schema import grants, settings as inbox_settings
+                c.execute(delete(grants).where(grants.c.tenant==row['tenant']))
+                c.execute(update(inbox_settings).where(inbox_settings.c.tenant==row['tenant']).values(automatic=False,revision=inbox_settings.c.revision+1))
+                if send_requested: c.execute(grants.insert().values(tenant=row['tenant'],token_digest=digest(encrypted)))
                 c.execute(delete(connections).where(connections.c.tenant==row['tenant']))
                 c.execute(connections.insert().values(tenant=row['tenant'],email=mailbox,
-                    refresh_token=seal(cipher,row['tenant'],tokens['refresh_token']),
-                    history_id=profile['historyId'],next_sync=int(time.time())+60,created=int(time.time())))
+                    refresh_token=encrypted,
+                    history_id=old['history_id'] if old and old['email']==mailbox else profile['historyId'],
+                    page_token=old['page_token'] if old and old['email']==mailbox else None,next_sync=int(time.time())+60,created=int(time.time())))
                 store.audit(c,row['tenant'],'gmail.connected')
         except EmailFailure as exc: raise HTTPException(400,exc.code) from None
         except IntegrityError: raise HTTPException(409,'This mailbox is already connected to another workspace') from None
@@ -169,10 +187,35 @@ def router(get_engine, tenant_dependency, enabled):
         result.delete_cookie('gmail_oauth',path='/api/integrations/gmail')
         return result
 
+    @routes.post('/reset-sync')
+    async def reset_sync(t=Depends(tenant_dependency)):
+        # Explicitly acknowledged by the operator: old history cannot be recovered.
+        store=EmailStore(get_engine())
+        with store.engine.connect() as c:row=c.execute(select(connections).where(connections.c.tenant==t)).mappings().first()
+        if not row or row['error']!='gmail_history_expired':raise HTTPException(409,'Only an expired history cursor can be reset')
+        config,_,cipher=settings()
+        try:
+            async with httpx.AsyncClient(timeout=12,follow_redirects=False) as client:
+                tokens=await google_json(client,'POST','https://oauth2.googleapis.com/token',data={'client_id':config['client_id'],'client_secret':config['client_secret'],'grant_type':'refresh_token','refresh_token':unseal(cipher,t,row['refresh_token'])})
+                profile=await google_json(client,'GET',BASE+'/profile',headers={'Authorization':'Bearer '+tokens['access_token']})
+            if profile['emailAddress'].lower()!=row['email']:raise ValueError()
+            with store.transaction(t) as c:
+                changed=c.execute(update(connections).where(connections.c.tenant==t,connections.c.refresh_token==row['refresh_token'],connections.c.error=='gmail_history_expired').values(history_id=profile['historyId'],page_token=None,owner=None,error=None,next_sync=int(time.time()))).rowcount
+                if not changed:raise HTTPException(409,'Connection changed; refresh the page')
+                from app.inbox_schema import settings as inbox_settings
+                c.execute(update(inbox_settings).where(inbox_settings.c.tenant==t).values(automatic=False,revision=inbox_settings.c.revision+1))
+                store.audit(c,t,'gmail.history_reset_gap_acknowledged')
+        except HTTPException:raise
+        except Exception:raise HTTPException(503,'Could not reset Gmail sync') from None
+        return {'reset':True,'note':'Sync restarts from now. Review the missed period in Gmail manually.'}
+
     @routes.post('/disconnect')
     def disconnect(t=Depends(tenant_dependency)):
         store = EmailStore(get_engine())
         with store.transaction(t) as c:
+            from app.inbox_schema import grants, settings as inbox_settings
+            c.execute(delete(grants).where(grants.c.tenant==t))
+            c.execute(update(inbox_settings).where(inbox_settings.c.tenant==t).values(automatic=False,revision=inbox_settings.c.revision+1))
             c.execute(delete(connections).where(connections.c.tenant==t))
             c.execute(delete(states).where(states.c.tenant==t))
             store.audit(c,t,'gmail.disconnected')
@@ -266,7 +309,8 @@ async def sync_one(store):
                     event=IncomingEvent(id='gmail:'+digest(row['email'])[:24]+':'+message_id,
                                         type='email.received',content=content)
                     retention=max(1,min(int(os.getenv('SOLOAI_EMAIL_RETENTION_HOURS','168')),720))*3600
-                    store.enqueue(row['tenant'],event,configuration(),retention,mailbox_owner=owner)
+                    from app.email_delivery import message_source
+                    store.enqueue(row['tenant'],event,configuration(),retention,mailbox_owner=owner,source=message_source(message,row['email']))
                 with store.transaction(row['tenant']) as c:
                     changes={'next_sync':int(time.time())+60,'last_sync':int(time.time()),'error':None,'owner':None}
                     if history.get('nextPageToken'): changes['page_token']=history['nextPageToken']
@@ -276,5 +320,5 @@ async def sync_one(store):
         error=exc.code if isinstance(exc,EmailFailure) else 'gmail_sync_unavailable'
         if isinstance(exc,HTTPException) and exc.status_code==409: error='email_agent_disabled'
         with store.transaction(row['tenant']) as c:
-            c.execute(update(connections).where(*fence).values(error=error,owner=None,next_sync=int(time.time())+60))
+            c.execute(update(connections).where(*fence).values(error=error,owner=None,next_sync=int(time.time())+(300 if error==row['error'] else 60)))
             store.audit(c,row['tenant'],'gmail.sync_failed.'+error)

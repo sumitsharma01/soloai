@@ -1,0 +1,4 @@
+# This endpoint authenticates a dedicated scoped bearer token inside its handler.
+# Never deploy without setting SOLOAI_BOOKING_TOKEN_SHA256 first.
+[functions.soloai-booking]
+verify_jwt = false

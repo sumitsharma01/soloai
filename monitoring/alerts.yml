@@ -1,0 +1,33 @@
+groups:
+  - name: soloai-email-reliability
+    rules:
+      - alert: SoloAIWorkerUnavailable
+        expr: up{job="soloai-email-worker"} == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Email worker metrics are unavailable. Check the worker before restarting jobs."}
+      - alert: SoloAIOperationsStale
+        expr: time() - max(soloai_operations_last_success_timestamp_seconds) > 300
+        for: 2m
+        labels: {severity: critical}
+        annotations: {summary: "Worker health collection stopped. Inspect worker and database health."}
+      - alert: SoloAIEmailQueueDelayed
+        expr: max(soloai_email_queue_oldest_seconds) > 300
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "Emails have waited over five minutes. Check quota, workers and provider errors."}
+      - alert: SoloAIMailboxNeedsAttention
+        expr: max(soloai_mailbox_errors) > 0
+        for: 5m
+        labels: {severity: warning}
+        annotations: {summary: "A mailbox connection needs review. Inspect Support Inbox health."}
+      - alert: SoloAIReviewOverdue
+        expr: max(soloai_email_review_oldest_seconds) > 14400
+        for: 10m
+        labels: {severity: warning}
+        annotations: {summary: "An email has waited over four hours for review."}
+      - alert: SoloAIHighFailureRate
+        expr: sum(rate(soloai_http_requests_total{status=~"5.."}[5m])) / clamp_min(sum(rate(soloai_http_requests_total[5m])), 0.01) > 0.01
+        for: 10m
+        labels: {severity: critical}
+        annotations: {summary: "API server-error rate exceeds the initial 99% availability objective."}

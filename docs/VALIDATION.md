@@ -1,5 +1,7 @@
 # Validation record
 
+For the current Email Support results, read [Testing Email Support](EMAIL-PILOT.md). The entries below describe earlier checks and should not be treated as the current test count.
+
 Validated locally on 9 September 2026 with Python 3.13.6.
 
 - `pytest -q`: **4 passed**. Two upstream test-client deprecation warnings; no failing tests.

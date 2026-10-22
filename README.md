@@ -10,7 +10,7 @@ Your application stays where it is, whether that is Vercel, AWS or another host.
 
 **Create an account → Connect a tool → Set your agent's guidance → Turn it on.**
 
-We are starting with customer support. Website Chat answers questions using your guidance. Email Support prepares replies for review. More agents and simpler connections are the direction of the product, not a promise that every integration is ready today.
+We are starting with customer support. Website Chat answers questions using your guidance. Email Support prepares replies for review. We will add more agents as these workflows prove useful and reliable.
 
 ## Try it on your computer
 
@@ -42,11 +42,11 @@ Open **Integrations** in SoloAI. It is the starting point for connections and th
 
 | Connection | Available today |
 |---|---|
-| Gmail | Sign in with Google once your SoloAI operator has configured Gmail. Read new inbox messages and prepare drafts. No sending or deleting. |
-| Booking information | Read-only lookup through an approved MCP connection configured by your operator, or a local support snapshot. |
+| Gmail | Sign in with Google once your SoloAI operator has configured Gmail. Read new inbox messages and prepare drafts. Optional send consent supports reviewed replies and explicitly enabled automatic replies. No deleting. |
+| Booking information | Restricted Supabase lookup with customer verification. MCP and imported snapshots remain available for development. |
 | Your application | Optional server API for custom events. Kept under the developer section. |
-| Supabase | [Guided setup form](docs/SUPABASE.md) for booking data. Saves a workspace request; authorization and database access are pending operator implementation. |
-| Outlook and other services | Planned. |
+| Supabase | [Restricted booking connection](docs/SUPABASE.md). Requires an operator-configured Edge Function and a dedicated token. |
+| Outlook | Pilot implementation with separate Microsoft consent. Automated tests pass; live mailbox verification is still pending. |
 
 You do not need to give SoloAI access to your AWS or Vercel account just because your website runs there. Connect the mailbox or approved business data the agent needs instead.
 
@@ -56,11 +56,15 @@ For a managed SoloAI service, the operator sets up the Google application once a
 
 - Each workspace has its own agent settings, permissions and usage allowance.
 - Booking access is read-only. Agents do not get unrestricted database credentials.
-- Emails remain drafts. Approving a draft records your decision; it does not send it.
+- Support Inbox lets you edit and send reviewed replies. Automatic sending is off by default and requires separate consent and rules.
 - Stop controls and token limits bound agent activity.
 - Manual test content is transient. The optional email review workflow stores emails and drafts temporarily, with a configurable retention period.
 
 These controls reduce risk; they do not guarantee that an AI response is correct. See [security boundaries and limitations](SECURITY.md).
+
+## Support Inbox
+
+Review emails in a compact list, open a message to edit the reply, manage labels and save business instructions. Sending requires explicit Gmail authorization. See the [Support Inbox guide](docs/SUPPORT-INBOX.md) for setup, automation rules and recovery.
 
 ## Go beyond the preview
 
@@ -69,7 +73,7 @@ These guides are for the person running SoloAI. Customers of a configured instan
 | Task | Guide |
 |---|---|
 | Use the product locally | [Getting started](docs/GETTING-STARTED.md) |
-| Connect a real model | [Foundry setup](docs/IMPLEMENTATION.md#prepared-foundry-support-agent) |
+| Connect a real model | [Direct Azure model](docs/AZURE-MODEL.md) or [registered Foundry agent](docs/IMPLEMENTATION.md#prepared-foundry-support-agent) |
 | Receive Gmail and review drafts | [Gmail setup](docs/GMAIL.md) and [email worker](docs/EMAIL-WORKFLOWS.md) |
 | Connect booking data | [MCP setup](docs/MCP.md) |
 | Run Grafana and Prometheus | [Monitoring](docs/monitoring.md) |
@@ -87,3 +91,7 @@ The animation illustrates the product vision. The screenshots below show earlier
 | SoloAI | Grafana |
 |---|---|
 | ![SoloAI local dashboard](docs/screenshots/platform-live.png) | ![Grafana local dashboard](docs/screenshots/grafana-live.png) |
+
+### Email pilot checks
+
+See [Email pilot: review, recovery and evaluation](docs/EMAIL-PILOT.md) for inbox outcomes, failure recovery, lifecycle tests and the live Azure evaluation.

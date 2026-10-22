@@ -3,9 +3,9 @@
 This guide is for the person running SoloAI. To use a configured instance, start with [Getting started](GETTING-STARTED.md) and open **Integrations** in the app.
 
 
-Gmail intake is read-only. SoloAI reads new inbox messages, forwards them to the
+Gmail intake starts with read-only access. Optional sending is covered in the [Support Inbox guide](SUPPORT-INBOX.md). SoloAI reads new inbox messages, forwards them to the
 existing email queue, and produces drafts for operator review. It does not create
-Gmail drafts, send mail, change labels, or delete messages. Forwarded content is
+Gmail drafts, change Gmail labels, or delete messages. Sending requires separate `gmail.send` consent. Forwarded content is
 processed by the configured Azure Foundry agent and follows email-review retention.
 
 1. Enable Gmail API in your Google Cloud project.
@@ -90,7 +90,7 @@ flowchart TD
     D -->|7. Through authenticated SoloAI API| U[Human review dashboard]
 ```
 
-SQLite is for local development. Production email workflows require PostgreSQL; the default Azure SQL Terraform profile is not compatible with this opt-in workflow without infrastructure changes. There is no automatic email sending, live booking modification, attachment processing, old-inbox backfill or automatic retraining.
+SQLite is for local development. Production email workflows require PostgreSQL; the default Azure SQL Terraform profile is not compatible with this opt-in workflow without infrastructure changes. Automatic sending is opt-in with server-side rules. Live booking modification, attachment processing, old-inbox backfill and automatic retraining are not implemented.
 
 ## Screenshots from the local setup
 

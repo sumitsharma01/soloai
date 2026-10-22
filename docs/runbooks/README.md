@@ -11,3 +11,5 @@ Never attach OAuth callback URLs, cookies, tokens, customer messages or database
 For incidents record the time, environment, safe error code, affected component, action taken and recovery check. Treat a connected mailbox, a healthy sync, and a successful model execution as three separate checks.
 
 - [Booking MCP](MCP.md): configuration, authentication, tenant isolation and tool failures.
+
+- [Email delivery](EMAIL-DELIVERY.md): failed sends, uncertain outcomes, permissions and stopping automation.

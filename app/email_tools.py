@@ -1,4 +1,5 @@
 """Two read-only tools. Identity is supplied by the worker, never by model arguments."""
+import os
 import asyncio
 import json
 import re
@@ -147,6 +148,11 @@ class ToolGateway:
     async def execute(self, name, args):
         tenant = self.context['tenant']
         if name == 'get_booking':
+            from app.booking_connector import lookup
+            live=await lookup(self.store,self.context,args.booking_id)
+            if live is not None:return live
+            if os.getenv('SOLOAI_ENV')=='production':
+                return {'found':False,'booking_id':args.booking_id,'status':None,'change_allowed':None}
             from app.mcp_booking import booking_source
             source = self.booking_source or booking_source(self.store.engine, tenant)
             return await source.get_booking(tenant, args.booking_id)
