@@ -199,3 +199,59 @@ def test_regeneration_carries_guidance_without_reusing_delivery(configured):
     context=s.store.claim(90)
     assert 'Reception is closed this Sunday.' in context['guidance']
     assert context['draft'] is None
+
+
+def test_label_colours_and_rule_membership(configured):
+    s=configured
+    assert s.a.post('/api/inbox/labels',json={'name':'Delivery','colour':'purple'}).status_code==200
+    data=s.a.get('/api/inbox').json()
+    label=next(x for x in data['labels'] if x['name']=='Delivery')
+    assert label['colour']=='purple'
+    assert s.b.put('/api/inbox/labels/'+label['id'],json={'name':'Other','colour':'red'}).status_code==404
+    assert s.a.post('/api/inbox/labels',json={'name':'Bad','colour':'url(evil)'}).status_code==422
+    rules=data['rules']
+    for selected in ([label['id']],[]):
+        result=s.a.put('/api/inbox/rules',json=dict(automatic=False,allowed_labels=selected,daily_limit=20,revision=rules['revision']))
+        assert result.status_code==200
+        rules=s.a.get('/api/inbox').json()['rules']
+        assert rules['allowed_labels']==selected
+
+
+def test_instruction_assist_is_proposal_and_accounts_usage(configured,monkeypatch):
+    from app import instruction_assist
+    from sqlalchemy import text
+    s=configured
+    monkeypatch.setenv('AZURE_FOUNDRY_PROJECT_ENDPOINT','https://example.test')
+    monkeypatch.setenv('AZURE_FOUNDRY_MODEL','test-model')
+    monkeypatch.setattr(instruction_assist,'rewrite',lambda content:('When: a policy is unclear.\nWhat to do: ask a human.',80))
+    with s.engine.connect() as c:
+        before=c.execute(text('SELECT used FROM tenants WHERE id=:t'),{'t':s.tenants[0]}).scalar_one()
+    response=s.a.post('/api/inbox/instructions/assist',json={'content':'ask someone if not sure'})
+    assert response.status_code==200 and response.json()['tokens']==80
+    assert s.a.get('/api/inbox').json()['instructions']==[]
+    with s.engine.connect() as c:
+        assert c.execute(text('SELECT used FROM tenants WHERE id=:t'),{'t':s.tenants[0]}).scalar_one()==before+80
+    def broken(content): raise ValueError('private provider details')
+    monkeypatch.setattr(instruction_assist,'rewrite',broken)
+    response=s.a.post('/api/inbox/instructions/assist',json={'content':'rough notes'})
+    assert response.status_code==503 and 'private' not in response.text
+    with s.engine.begin() as c:
+        c.execute(text('UPDATE tenants SET used=budget WHERE id=:t'),{'t':s.tenants[0]})
+    assert s.a.post('/api/inbox/instructions/assist',json={'content':'notes'}).status_code==429
+    assert s.a.post('/api/inbox/instructions/assist',json={'content':'   '}).status_code==422
+
+
+def test_label_colour_upgrade_preserves_existing_rows(tmp_path):
+    from sqlalchemy import create_engine,text,inspect
+    from app.inbox_schema import migrate
+    engine=create_engine('sqlite:///'+str(tmp_path/'old.db'))
+    with engine.begin() as c:
+        from app.email_schema import versions
+        versions.create(c)
+        c.execute(versions.insert().values(version=3))
+        c.execute(text('CREATE TABLE inbox_labels (tenant VARCHAR(64),id VARCHAR(64),name VARCHAR(60),keywords VARCHAR(500),PRIMARY KEY (tenant,id))'))
+        c.execute(text("INSERT INTO inbox_labels VALUES ('tenant','query','Query','question')"))
+        migrate(c);migrate(c)
+        assert 'colour' in {x['name'] for x in inspect(c).get_columns('inbox_labels')}
+        assert c.execute(text('SELECT name,colour FROM inbox_labels')).one()==('Query','slate')
+    engine.dispose()

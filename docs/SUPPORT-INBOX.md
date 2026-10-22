@@ -80,3 +80,33 @@ Migration 003 adds inbox tables. It does not rewrite existing jobs. Start the up
 A new Prometheus counter, `soloai_email_deliveries_total{status="SENT|FAILED|UNKNOWN"}`, records completed delivery attempts. Audit events record the execution and whether the workspace owner or agent initiated sending. This version has one owner per workspace, not a multi-agent staff assignment system.
 
 See [delivery recovery](runbooks/EMAIL-DELIVERY.md) for failed or uncertain sends.
+
+## Label colours and reply groups
+
+Open **Automation rules** and check the labels that belong in the automatic reply group. Uncheck a label to remove it, or use **Remove all from group**. The count shows your pending selection. Nothing changes until you choose **Save rules**. Gmail sending consent and the existing review safeguards still apply.
+
+Open **Labels** to choose from eight named colours. Names remain visible, so colour is never the only way to identify a label. Changing a label pauses automatic sending; review the rules before enabling it again.
+
+## Help writing business instructions
+
+Write your rough notes in a business instruction or an email's additional guidance box, then choose **AI assistance**. Review the proposal and choose **Use suggestion** or **Keep my notes**. You can undo an applied suggestion before editing it further. Save the form separately when you are happy with the wording.
+
+The helper uses the configured Azure Foundry project and `AZURE_FOUNDRY_MODEL`, authenticated with the application's existing Azure identity. It makes a separate, stateless model request with no email, booking or sending tools. Only the notes you submit go to the model. It does not load your inbox or save a conversation. Do not put credentials in these notes.
+
+Suggestions use the workspace token allowance and request limit. Failed calls retain a conservative token reservation because a provider may have processed the request. Audit entries record completion or failure without the notes. When Foundry is unavailable, the UI keeps your text and explains the failure. The local synthetic preview has no Foundry connection, so it cannot generate real suggestions.
+
+Review generated wording for accuracy. A suggestion cannot grant permissions, activate automation or save itself. Business instructions influence future runs only after you save them.
+
+### Upgrade
+
+Stop API and email workers, back up your database, then run `python -m scripts.email_admin migrate` with the application's database configuration. Restart both services. Migration 004 adds label colours without changing existing labels or reply rules. Existing labels start grey; choose their colours in **Labels**. Local development with schema initialisation enabled applies this migration at startup.
+
+### Screenshots
+
+Label settings in the local preview:
+
+![Selectable label colours](screenshots/inbox-label-colours.png)
+
+Writing assistance, including the connection message shown when Foundry is not configured:
+
+![Business instruction assistance](screenshots/inbox-instruction-assistance.png)

@@ -58,7 +58,7 @@ async def lifespan(app):
             migrate(engine)
         from app.email_schema import versions
         with engine.connect() as c:
-            if c.execute(versions.select().where(versions.c.version==3)).first() is None:
+            if c.execute(versions.select().where(versions.c.version==4)).first() is None:
                 raise RuntimeError('Run python -m scripts.email_admin migrate before enabling email workflows')
     metrics_server=None
     if os.getenv('SOLOAI_METRICS_PORT'):

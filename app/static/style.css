@@ -28,3 +28,24 @@ select{font:inherit;padding:11px;border:1px solid #d6deeb;border-radius:8px;colo
 @media(max-width:640px){.inbox-dialog{width:100vw}.inbox-dialog-head,.inbox-dialog-body{padding:16px}.inbox-filters{display:grid;grid-template-columns:1fr}.inbox-filters select{width:100%}}
 
 .content.inbox-mode{max-width:1600px;padding-top:20px}.inbox-mode .heading{margin-bottom:18px}.inbox-mode .eyebrow{display:none}.inbox-mode .inbox-toolbar{padding:18px}.inbox-mode .inbox-toolbar p{margin:6px 0}.inbox-mode .inbox-list{padding:18px}
+
+/* Named colours keep labels readable and work with the strict content security policy. */
+.label-slate{background:#edf1f5!important;color:#344255!important}
+.label-blue{background:#e5efff!important;color:#174b91!important}
+.label-green{background:#e3f5e8!important;color:#216337!important}
+.label-amber{background:#fff1ce!important;color:#775000!important}
+.label-red{background:#ffe7e7!important;color:#962c36!important}
+.label-purple{background:#eee5ff!important;color:#64339b!important}
+.label-teal{background:#dcf4f0!important;color:#17665b!important}
+.label-pink{background:#fce4f0!important;color:#8b3060!important}
+.reply-group,.colour-picker{border:1px solid #dce3ec;border-radius:12px;padding:16px;margin:16px 0}
+.reply-labels,.colour-picker{display:flex;flex-wrap:wrap;gap:10px}
+.reply-labels label,.colour-picker label{display:flex;align-items:center;gap:8px;border-radius:20px;padding:8px 12px;cursor:pointer;margin:0;transition:box-shadow .15s}
+.reply-labels input,.colour-picker input{width:auto;margin:0;accent-color:#4e52bb}
+.reply-labels label:has(:checked),.colour-picker label:has(:checked){box-shadow:0 0 0 2px #5652b5}
+.instruction-assistant{position:relative;border:1px solid #dddaf3;background:#f9f8ff;border-radius:12px;padding:14px;margin:0 0 20px}
+.assist-trigger{display:block;margin-left:auto;color:#5142a1;border-color:#cfc5ef}
+.instruction-assistant p{font-size:13px;line-height:1.6}
+.assist-preview{border-top:1px solid #ded8f2;padding-top:12px}
+.assist-preview pre{white-space:pre-wrap;font:inherit;background:white;border-radius:8px;padding:16px}
+.assist-preview button{margin-right:8px}

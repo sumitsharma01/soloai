@@ -1,10 +1,11 @@
 """Migration 003: inbox configuration and a separate, durable delivery ledger."""
-from sqlalchemy import Table, Column, String, Text, Integer, BigInteger, Boolean, ForeignKeyConstraint, select
+from sqlalchemy import Table, Column, String, Text, Integer, BigInteger, Boolean, ForeignKeyConstraint, select, inspect, text
 from app.email_schema import metadata, versions
 
 labels = Table('inbox_labels', metadata,
     Column('tenant', String(64), primary_key=True), Column('id', String(64), primary_key=True),
-    Column('name', String(60), nullable=False), Column('keywords', String(500), nullable=False))
+    Column('name', String(60), nullable=False), Column('keywords', String(500), nullable=False),
+    Column('colour', String(16), nullable=False, server_default='slate'))
 settings = Table('inbox_settings', metadata,
     Column('tenant', String(64), primary_key=True), Column('automatic', Boolean, nullable=False),
     Column('allowed_labels', Text, nullable=False), Column('daily_limit', Integer, nullable=False),
@@ -34,3 +35,9 @@ def migrate(c):
     if not c.execute(select(versions.c.version).where(versions.c.version==3)).first():
         for table in (labels, settings, tickets, instructions, deliveries, grants, consents): table.create(c)
         c.execute(versions.insert().values(version=3))
+
+    # Existing installations keep their labels; fresh installations already have this column.
+    if not c.execute(select(versions.c.version).where(versions.c.version==4)).first():
+        if 'colour' not in {column['name'] for column in inspect(c).get_columns('inbox_labels')}:
+            c.execute(text("ALTER TABLE inbox_labels ADD COLUMN colour VARCHAR(16) NOT NULL DEFAULT 'slate'"))
+        c.execute(versions.insert().values(version=4))

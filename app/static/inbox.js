@@ -1,5 +1,8 @@
 /* Support Inbox: compact rows, explicit review and no generated HTML rendering. */
 let inboxState, inboxSearch='', inboxFilter='all', inboxLabel='all';
+const labelColours=['slate','blue','green','amber','red','purple','teal','pink'];
+const labelColour=l=>labelColours.includes(l?.colour)?l.colour:'slate';
+const colourPicker=l=>`<fieldset class="colour-picker"><legend>Label colour</legend>${labelColours.map(c=>`<label class="label-${c}"><input type="radio" name="colour" value="${c}" ${labelColour(l)===c?'checked':''}>${c}</label>`).join('')}</fieldset>`;
 const inboxDate = value => new Date(value*1000).toLocaleString();
 const inboxStatus = row => row.delivery ? row.delivery.status : row.needs_human && row.status==='WAITING_FOR_REVIEW' ? 'NEEDS HUMAN' : row.status;
 const labelOptions = (chosen=[], all=false) => (all?'<option value="">All emails</option>':'') + inboxState.labels.map(l=>`<option value="${esc(l.id)}" ${chosen.includes(l.id)?'selected':''}>${esc(l.name)}</option>`).join('');
@@ -36,7 +39,7 @@ function renderInboxRows(){
       (inboxFilter==='all'||inboxFilter==='review'&&['WAITING_FOR_REVIEW','NEEDS HUMAN','APPROVED'].includes(status)||inboxFilter==='processing'&&['QUEUED','RUNNING','DISPATCHING'].includes(status)||inboxFilter==='sent'&&status==='SENT'||inboxFilter==='failed'&&['FAILED','UNKNOWN'].includes(status));
   });
   const target=document.querySelector('#inbox-rows');
-  target.innerHTML=rows.length?`<div class="tablewrap"><table><thead><tr><th>Sender / subject</th><th>Labels</th><th>Status</th><th>Received</th></tr></thead><tbody>${rows.map(r=>`<tr><td><button class="ticket-open" data-ticket="${esc(r.id)}"><strong>${esc(r.subject)}</strong><small>${esc(r.sender)}</small></button></td><td>${r.labels.map(id=>`<span class="chip">${esc(inboxState.labels.find(l=>l.id===id)?.name||id)}</span>`).join(' ')}</td><td><span class="chip">${esc(inboxStatus(r).replaceAll('_',' '))}</span></td><td>${inboxDate(r.created)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No emails match this view. Connect Gmail in Integrations to receive new messages.</p>';
+  target.innerHTML=rows.length?`<div class="tablewrap"><table><thead><tr><th>Sender / subject</th><th>Labels</th><th>Status</th><th>Received</th></tr></thead><tbody>${rows.map(r=>`<tr><td><button class="ticket-open" data-ticket="${esc(r.id)}"><strong>${esc(r.subject)}</strong><small>${esc(r.sender)}</small></button></td><td>${r.labels.map(id=>`<span class="chip label-${labelColour(inboxState.labels.find(l=>l.id===id))}">${esc(inboxState.labels.find(l=>l.id===id)?.name||id)}</span>`).join(' ')}</td><td><span class="chip">${esc(inboxStatus(r).replaceAll('_',' '))}</span></td><td>${inboxDate(r.created)}</td></tr>`).join('')}</tbody></table></div>`:'<p class="empty">No emails match this view. Connect Gmail in Integrations to receive new messages.</p>';
   target.querySelectorAll('[data-ticket]').forEach(b=>b.onclick=()=>openInboxEmail(b.dataset.ticket));
 }
 function inboxDialog(title){
@@ -83,6 +86,7 @@ async function openInboxEmail(id){
       await save();const sent=await api('inbox/emails/'+id+'/send','POST',{revision:r.revision});dialog.close();await refreshInboxData();toast(sent.sent?'Reply sent.':sent.status==='UNKNOWN'?'Delivery is uncertain. Check Gmail Sent; do not resend.':'Gmail rejected delivery. Your draft is saved.');
     });
     body.querySelector('#ticket-reject').onclick=()=>action(async()=>{await api('executions/'+id+'/reject','POST');dirty=false;dialog.close();await refreshInboxData()});
+    attachInstructionAssistant(form.elements.local_guidance);
     body.querySelector('#ticket-future').onclick=()=>showInboxInstructions(form.elements.local_guidance.value);
   }catch(e){body.textContent=e.message}
 }
@@ -91,13 +95,16 @@ function showInboxRules(){
   const dialog=inboxDialog('Automation rules'),body=dialog.querySelector('.inbox-dialog-body'),r=inboxState.rules;
   body.innerHTML=`<p>Classification, permitted lookups and draft preparation run automatically. Sending is a separate permission.</p><p class="notice">Automatic sending applies only to new emails received after you save these rules. Refunds, cancellations, booking/account details, failed lookups, edited drafts and requests for human help stay in review. Keyword rules are conservative checks, not a guarantee of reply accuracy.</p>
     ${!inboxState.send_authorized?'<button id="authorize-send">Authorize Gmail sending</button><p>Google will ask for read and send permissions. This does not turn on automatic sending.</p>':'<p>Gmail read and send permissions are authorized.</p>'}
-    <form><label class="inbox-toggle"><input name="automatic" type="checkbox" ${r.automatic?'checked':''} ${inboxState.send_authorized?'':'disabled'}> Allow automatic replies</label><label>Eligible labels<select name="allowed" multiple>${labelOptions(r.allowed_labels)}</select></label><label>Daily send limit (manual and automatic, UTC)<input type="number" name="limit" min="1" max="200" value="${r.daily_limit}" required></label><p>Pausing stops new dispatches. A reply already being sent cannot be recalled.</p><button class="primary">Save rules</button><p role="status"></p></form>`;
+    <form><label class="inbox-toggle"><input name="automatic" type="checkbox" ${r.automatic?'checked':''} ${inboxState.send_authorized?'':'disabled'}> Allow automatic replies</label><fieldset class="reply-group"><legend>Automatic reply group</legend><p>Select a label to add it. Uncheck it to remove it. Other labels stay in review.</p><div class="reply-labels">${inboxState.labels.map(l=>`<label class="label-${labelColour(l)}"><input type="checkbox" name="allowed" value="${esc(l.id)}" ${r.allowed_labels.includes(l.id)?'checked':''}>${esc(l.name)}</label>`).join('')}</div><p id="group-count" aria-live="polite"></p><button type="button" id="group-clear">Remove all from group</button></fieldset><label>Daily send limit (manual and automatic, UTC)<input type="number" name="limit" min="1" max="200" value="${r.daily_limit}" required></label><p>Pausing stops new dispatches. A reply already being sent cannot be recalled.</p><button class="primary">Save rules</button><p role="status"></p></form>`;
   if(body.querySelector('#authorize-send'))body.querySelector('#authorize-send').onclick=async()=>{try{const response=await api('integrations/gmail/connect','POST',{allow_send:true});location.assign(response.url)}catch(e){toast(e.message)}};
-  const form=body.querySelector('form');form.onsubmit=async e=>{e.preventDefault();try{await api('inbox/rules','PUT',{automatic:form.elements.automatic.checked,allowed_labels:Array.from(form.elements.allowed.selectedOptions,o=>o.value),daily_limit:Number(form.elements.limit.value),revision:r.revision});dialog.close();await showEmailReview()}catch(error){form.querySelector('[role="status"]').textContent=error.message}};
+  const form=body.querySelector('form');
+  const count=()=>{body.querySelector('#group-count').textContent=`${form.querySelectorAll('[name=allowed]:checked').length} labels selected · Changes take effect when you save rules.`};
+  form.querySelectorAll('[name=allowed]').forEach(el=>el.onchange=count);body.querySelector('#group-clear').onclick=()=>{form.querySelectorAll('[name=allowed]').forEach(el=>el.checked=false);count()};count();
+  form.onsubmit=async e=>{e.preventDefault();try{await api('inbox/rules','PUT',{automatic:form.elements.automatic.checked,allowed_labels:Array.from(form.querySelectorAll('[name=allowed]:checked'),o=>o.value),daily_limit:Number(form.elements.limit.value),revision:r.revision});dialog.close();await showEmailReview()}catch(error){form.querySelector('[role="status"]').textContent=error.message}};
 }
 function showInboxLabels(){
   const dialog=inboxDialog('Labels'),body=dialog.querySelector('.inbox-dialog-body');
-  body.innerHTML=`<p>Keywords suggest labels on new messages. Existing messages keep their labels. Editing or deleting a label pauses automatic sending so you can review the rules.</p><div id="label-list">${inboxState.labels.map(l=>`<form data-id="${esc(l.id)}"><label>Name<input name="name" maxlength="60" required value="${esc(l.name)}"></label><label>Keywords, separated by commas<input name="keywords" maxlength="500" value="${esc(l.keywords)}"></label><div class="actions"><button>Save label</button><button type="button" data-remove="${esc(l.id)}">Remove label</button></div></form>`).join('')}</div><h3>Create a label</h3><form id="label-new"><label>Name<input name="name" maxlength="60" required></label><label>Keywords<input name="keywords" maxlength="500" placeholder="delivery, shipment"></label><button>Create label</button></form>`;
+  body.innerHTML=`<p>Keywords suggest labels on new messages. Existing messages keep their labels. Editing or deleting a label pauses automatic sending so you can review the rules.</p><div id="label-list">${inboxState.labels.map(l=>`<form data-id="${esc(l.id)}"><label>Name<input name="name" maxlength="60" required value="${esc(l.name)}"></label><label>Keywords, separated by commas<input name="keywords" maxlength="500" value="${esc(l.keywords)}"></label>${colourPicker(l)}<div class="actions"><button>Save label</button><button type="button" data-remove="${esc(l.id)}">Remove label</button></div></form>`).join('')}</div><h3>Create a label</h3><form id="label-new"><label>Name<input name="name" maxlength="60" required></label><label>Keywords<input name="keywords" maxlength="500" placeholder="delivery, shipment"></label>${colourPicker(null)}<button>Create label</button></form>`;
   body.querySelectorAll('form').forEach(form=>form.onsubmit=async e=>{e.preventDefault();try{await api('inbox/labels'+(form.dataset.id?'/'+form.dataset.id:''),form.dataset.id?'PUT':'POST',Object.fromEntries(new FormData(form)));dialog.close();await showEmailReview();showInboxLabels()}catch(error){toast(error.message)}});
   body.querySelectorAll('[data-remove]').forEach(button=>button.onclick=async()=>{if(!confirm('Remove this label? Emails stay intact. Scoped instructions will be disabled and automatic sending paused.'))return;try{await api('inbox/labels/'+button.dataset.remove,'DELETE');dialog.close();await showEmailReview();showInboxLabels()}catch(error){toast(error.message)}});
 }
@@ -105,5 +112,36 @@ function showInboxInstructions(prefill=''){
   const dialog=inboxDialog('Business instructions'),body=dialog.querySelector('.inbox-dialog-body');
   body.innerHTML=`<p>These are approved business rules supplied to future agent executions, not model retraining. They never grant tool permissions. Existing drafts stay unchanged until regenerated.</p><div>${inboxState.instructions.map(r=>`<form data-id="${esc(r.id)}" data-revision="${r.revision}"><label>Instruction<textarea name="content" maxlength="1000" required>${esc(r.content)}</textarea></label><label>Applies to<select name="label_id">${labelOptions(r.label_id?[r.label_id]:[],true)}</select></label><label class="inbox-toggle"><input type="checkbox" name="active" ${r.active?'checked':''}> Active</label><div class="actions"><button>Save changes</button><button type="button" data-delete="${esc(r.id)}">Delete instruction</button></div></form>`).join('')}</div><h3>New instruction</h3><form><label>Instruction<textarea name="content" maxlength="1000" required placeholder="For late cancellation requests, explain our cancellation policy without promising a refund.">${esc(prefill)}</textarea></label><label>Applies to<select name="label_id">${labelOptions([],true)}</select></label><label class="inbox-toggle"><input type="checkbox" name="active" checked> Use for future emails</label><button class="primary">Save business instruction</button></form>`;
   body.querySelectorAll('form').forEach(form=>form.onsubmit=async e=>{e.preventDefault();try{await api('inbox/instructions'+(form.dataset.id?'/'+form.dataset.id:''),form.dataset.id?'PUT':'POST',{content:form.elements.content.value,label_id:form.elements.label_id.value||null,active:form.elements.active.checked,revision:Number(form.dataset.revision||0)});await refreshInboxData();dialog.close();toast('Business instruction saved. Existing drafts are unchanged.')}catch(error){toast(error.message)}});
+  body.querySelectorAll('textarea[name=content]').forEach(attachInstructionAssistant);
   body.querySelectorAll('[data-delete]').forEach(button=>button.onclick=async()=>{if(!confirm('Delete this instruction for future runs?'))return;try{await api('inbox/instructions/'+button.dataset.delete,'DELETE');await refreshInboxData();dialog.close();toast('Instruction deleted.')}catch(error){toast(error.message)}});
+}
+
+function attachInstructionAssistant(textarea){
+  const wrap=document.createElement('section');wrap.className='instruction-assistant';
+  const button=document.createElement('button');button.type='button';button.className='assist-trigger';button.textContent='✦ AI assistance';
+  const hint=document.createElement('p');hint.textContent='Write rough notes above. AI can organise them into a clear business instruction. Uses your workspace token allowance.';
+  const status=document.createElement('p');status.setAttribute('role','status');
+  const preview=document.createElement('div');preview.hidden=true;preview.className='assist-preview';
+  textarea.parentElement.after(wrap);wrap.append(button,hint,status,preview);
+  button.onclick=async()=>{
+    const original=textarea.value;
+    if(!original.trim()){status.textContent='Start with a few notes about what the agent should do.';textarea.focus();return}
+    button.disabled=true;button.textContent='✦ Organising your notes…';preview.hidden=true;status.textContent='Preparing a suggestion. Your original text stays safe.';
+    try{
+      const response=await api('inbox/instructions/assist','POST',{content:original});
+      if(!wrap.isConnected)return;
+      preview.replaceChildren();const title=document.createElement('h4');title.textContent='Your suggested instruction';
+      const text=document.createElement('pre');text.textContent=response.suggestion;
+      const help=document.createElement('p');help.textContent='Check policies and promises before applying. Applying does not save or activate this instruction.';
+      const apply=document.createElement('button');apply.type='button';apply.className='primary';apply.textContent='Use suggestion';
+      const dismiss=document.createElement('button');dismiss.type='button';dismiss.textContent='Keep my notes';
+      apply.onclick=()=>{if(textarea.value!==original){status.textContent='Your notes changed while the suggestion was prepared. Generate a fresh suggestion to keep your edits.';return}
+        textarea.value=response.suggestion;textarea.dispatchEvent(new Event('input',{bubbles:true}));preview.hidden=true;status.textContent='Suggestion applied. Review it, then save when ready.';
+        const undo=document.createElement('button');undo.type='button';undo.textContent='Undo';status.append(' ',undo);
+        undo.onclick=()=>{if(textarea.value!==response.suggestion){status.textContent='You have edited the suggestion. Undo was skipped to keep your changes.';return}textarea.value=original;textarea.dispatchEvent(new Event('input',{bubbles:true}));status.textContent='Original notes restored.'};textarea.focus()};
+      dismiss.onclick=()=>{preview.hidden=true;status.textContent='Original notes kept.'};
+      preview.append(title,text,help,apply,dismiss);preview.hidden=false;status.textContent='Ready for your review.';
+    }catch(error){status.textContent=error.message}
+    finally{button.disabled=false;button.textContent='✦ AI assistance'}
+  };
 }

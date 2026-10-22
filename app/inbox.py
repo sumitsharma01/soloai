@@ -1,4 +1,6 @@
 """Support inbox. Session-only management; delivery permissions are checked in code."""
+import os
+from typing import Literal
 import json
 import re
 import secrets
@@ -18,7 +20,7 @@ def bootstrap(c, tenant):
     if c.execute(select(settings.c.tenant).where(settings.c.tenant==tenant)).first(): return
     c.execute(settings.insert().values(tenant=tenant, automatic=False, allowed_labels='[]', daily_limit=20,revision=1,enabled_at=0))
     for id, name, keywords in DEFAULT_LABELS:
-        c.execute(labels.insert().values(tenant=tenant,id=id,name=name,keywords=keywords))
+        c.execute(labels.insert().values(tenant=tenant,id=id,name=name,keywords=keywords,colour={'refund':'amber','new-order':'green','cancellation':'red','query':'blue'}.get(id,'slate')))
 
 
 def create_ticket(c, tenant, execution, content, source=None):
@@ -71,6 +73,9 @@ class Input(BaseModel):
 class LabelInput(Input):
     name: str=Field(min_length=1,max_length=60,pattern=r'.*\S.*')
     keywords: str=Field(default='',max_length=500)
+    colour: Literal['slate','blue','green','amber','red','purple','teal','pink']='slate'
+class AssistInput(Input):
+    content: str=Field(min_length=1,max_length=1000,pattern=r'[\s\S]*\S[\s\S]*')
 class RulesInput(Input):
     automatic: bool
     allowed_labels: list[str]=Field(max_length=30)
@@ -98,6 +103,29 @@ def valid_labels(c,t,ids):
 def router(get_store, tenant):
     routes=APIRouter(prefix='/api/inbox')
 
+    @routes.post('/instructions/assist')
+    def assist(body:AssistInput,t=Depends(tenant)):
+        from app import instruction_assist
+        if not os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') or not os.getenv('AZURE_FOUNDRY_MODEL'):
+            raise HTTPException(503,'AI assistance needs the Azure Foundry connection. Your notes are unchanged.')
+        store=get_store();now=int(time.time());reserve=instruction_assist.reservation(body.content)
+        with store.transaction(t) as c:
+            c.execute(text('UPDATE tenants SET "window"=:w,requests=0 WHERE id=:t AND "window"<>:w'),{'w':now//60,'t':t})
+            if not c.execute(text('UPDATE tenants SET used=used+:r,requests=requests+1 WHERE id=:t AND used+:r<=budget AND requests<20'),{'r':reserve,'t':t}).rowcount:
+                raise HTTPException(429,'Usage allowance or request limit reached')
+        used=reserve;status='failed'
+        try:
+            suggestion,used=instruction_assist.rewrite(body.content)
+            status='completed'
+        except Exception:
+            # A failed provider call may still have consumed tokens. Keep its reservation.
+            raise HTTPException(503,'Could not prepare a suggestion. Your notes are unchanged. Try again later.') from None
+        finally:
+            with store.transaction(t) as c:
+                c.execute(text('UPDATE tenants SET used=used+:delta WHERE id=:t'),{'delta':used-reserve,'t':t})
+                store.audit(c,t,'inbox.instruction_assist.'+status)
+        return {'suggestion':suggestion,'tokens':used}
+
     @routes.get('')
     def listing(t=Depends(tenant)):
         store=get_store()
@@ -115,7 +143,7 @@ def router(get_store, tenant):
                     created=row['created_at'],labels=json.loads(ticket['labels']),delivery=dict(delivery) if delivery else None))
             cfg=dict(c.execute(select(settings).where(settings.c.tenant==t)).mappings().one())
             cfg['allowed_labels']=json.loads(cfg['allowed_labels']);cfg.pop('tenant')
-            return dict(emails=result,labels=[dict(r) for r in c.execute(select(labels.c.id,labels.c.name,labels.c.keywords).where(labels.c.tenant==t)).mappings()],
+            return dict(emails=result,labels=[dict(r) for r in c.execute(select(labels.c.id,labels.c.name,labels.c.keywords,labels.c.colour).where(labels.c.tenant==t)).mappings()],
                 rules=cfg,send_authorized=send_permission(c,t),instructions=[dict(r) for r in c.execute(select(instructions.c.id,instructions.c.content,instructions.c.label_id,instructions.c.active,instructions.c.revision).where(instructions.c.tenant==t).order_by(instructions.c.created)).mappings()])
 
     @routes.get('/emails/{execution}')
