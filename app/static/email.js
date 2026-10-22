@@ -1,9 +1,11 @@
 /* Gmail connection controls. Support Inbox lives in inbox.js. */
 function mountEmailReview(state) {
   if (!state.email_workflows) return;
-  const nav = document.querySelector('.nav');
+  const nav = document.querySelector('[data-agent-group="email-support"]');
+  if (!nav) return;
   const button = document.createElement('button');
-  button.textContent = '✉ Support Inbox';
+  button.textContent = 'Support Inbox';
+  button.className = 'inbox-nav-link';
   button.onclick = showEmailReview;
   nav.append(button);
   // Existing transient /api/try remains available. Explain the explicitly enabled

@@ -12,8 +12,8 @@ async function showEmailReview() {
   const page=document.querySelector('#page');
   document.querySelector('.content').classList.add('inbox-mode');
   const notice=document.querySelector('.content > .notice');if(notice)notice.hidden=true;
-  document.querySelector('header > span').textContent='Workspace / Support Inbox';
-  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.textContent.includes('Support Inbox')));
+  document.querySelector('header > span').textContent='My agents / Email Support / Support Inbox';
+  document.querySelectorAll('.nav button').forEach(b=>b.classList.toggle('active',b.classList.contains('inbox-nav-link')));
   page.innerHTML='<section class="panel"><h2>Support Inbox</h2><p role="status">Loading emails…</p></section>';
   try {
     inboxState=await api('inbox');

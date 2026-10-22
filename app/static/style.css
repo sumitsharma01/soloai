@@ -49,3 +49,8 @@ select{font:inherit;padding:11px;border:1px solid #d6deeb;border-radius:8px;colo
 .assist-preview{border-top:1px solid #ded8f2;padding-top:12px}
 .assist-preview pre{white-space:pre-wrap;font:inherit;background:white;border-radius:8px;padding:16px}
 .assist-preview button{margin-right:8px}
+
+.nav .agent-nav{margin:2px 0 14px 20px;padding-left:12px;border-left:1px solid #384764}
+.nav .agent-nav button{font-size:13px;padding:10px 12px;width:100%;text-align:left}
+.nav .agent-nav .inbox-nav-link{margin-left:14px;width:calc(100% - 14px);font-size:12px}
+@media(max-width:640px){.nav .agent-nav{min-width:170px;margin-bottom:0;flex-shrink:0}}

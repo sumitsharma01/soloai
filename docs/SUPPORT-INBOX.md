@@ -112,3 +112,9 @@ Writing assistance, including the connection message shown when Foundry is not c
 ![Business instruction assistance](screenshots/inbox-instruction-assistance.png)
 
 New workspaces start with amber Refund, green New order, red Cancellation, blue Query and purple Miscellaneous labels. New custom labels default to the least-used colour in the workspace. You can choose another colour before creating the label or change it later. Colours repeat once the palette is used up. Existing saved colours are preserved.
+
+## Find your inbox
+
+In the sidebar, **My agents** lists your current agents. Open **Email Support → Support Inbox** to review emails. Choose the agent name to open its settings. Support Inbox is no longer a separate top-level navigation item.
+
+![Inbox under Email Support](screenshots/inbox-agent-navigation.png)
