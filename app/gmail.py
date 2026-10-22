@@ -1,4 +1,4 @@
-"""Read-only Gmail OAuth and incremental intake. No sending, labels, or mailbox writes."""
+"""Gmail OAuth and incremental intake. Sending consent is separate; no deletion permissions."""
 import asyncio
 import base64
 import hashlib
@@ -81,7 +81,7 @@ async def google_json(client, method, url, **kwargs):
 class ConnectInput(BaseModel):
     allow_send: bool = False
     model_config = ConfigDict(extra='forbid',strict=True)
-    email: str | None = Field(default=None,max_length=254,pattern=r'^[^\s@]+@gmail\.com$')
+    email: str | None = Field(default=None,max_length=254,pattern=r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
 
 
 def router(get_engine, tenant_dependency, enabled):
@@ -162,8 +162,8 @@ def router(get_engine, tenant_dependency, enabled):
                 profile=await google_json(client,'GET',BASE+'/profile',
                     headers={'Authorization':'Bearer '+tokens['access_token']})
                 mailbox = profile['emailAddress'].lower()
-                if not mailbox.endswith('@gmail.com') or len(mailbox)>254:
-                    raise EmailFailure('gmail_personal_account_required')
+                if '@' not in mailbox or len(mailbox)>254:
+                    raise EmailFailure('gmail_invalid_mailbox')
                 if row['email'] and mailbox!=row['email']:
                     raise EmailFailure('gmail_wrong_account')
             # Baseline starts now. Old inbox contents are never imported automatically.
@@ -186,6 +186,28 @@ def router(get_engine, tenant_dependency, enabled):
         result=RedirectResponse('/?gmail=connected',status_code=303)
         result.delete_cookie('gmail_oauth',path='/api/integrations/gmail')
         return result
+
+    @routes.post('/reset-sync')
+    async def reset_sync(t=Depends(tenant_dependency)):
+        # Explicitly acknowledged by the operator: old history cannot be recovered.
+        store=EmailStore(get_engine())
+        with store.engine.connect() as c:row=c.execute(select(connections).where(connections.c.tenant==t)).mappings().first()
+        if not row or row['error']!='gmail_history_expired':raise HTTPException(409,'Only an expired history cursor can be reset')
+        config,_,cipher=settings()
+        try:
+            async with httpx.AsyncClient(timeout=12,follow_redirects=False) as client:
+                tokens=await google_json(client,'POST','https://oauth2.googleapis.com/token',data={'client_id':config['client_id'],'client_secret':config['client_secret'],'grant_type':'refresh_token','refresh_token':unseal(cipher,t,row['refresh_token'])})
+                profile=await google_json(client,'GET',BASE+'/profile',headers={'Authorization':'Bearer '+tokens['access_token']})
+            if profile['emailAddress'].lower()!=row['email']:raise ValueError()
+            with store.transaction(t) as c:
+                changed=c.execute(update(connections).where(connections.c.tenant==t,connections.c.refresh_token==row['refresh_token'],connections.c.error=='gmail_history_expired').values(history_id=profile['historyId'],page_token=None,owner=None,error=None,next_sync=int(time.time()))).rowcount
+                if not changed:raise HTTPException(409,'Connection changed; refresh the page')
+                from app.inbox_schema import settings as inbox_settings
+                c.execute(update(inbox_settings).where(inbox_settings.c.tenant==t).values(automatic=False,revision=inbox_settings.c.revision+1))
+                store.audit(c,t,'gmail.history_reset_gap_acknowledged')
+        except HTTPException:raise
+        except Exception:raise HTTPException(503,'Could not reset Gmail sync') from None
+        return {'reset':True,'note':'Sync restarts from now. Review the missed period in Gmail manually.'}
 
     @routes.post('/disconnect')
     def disconnect(t=Depends(tenant_dependency)):
@@ -298,5 +320,5 @@ async def sync_one(store):
         error=exc.code if isinstance(exc,EmailFailure) else 'gmail_sync_unavailable'
         if isinstance(exc,HTTPException) and exc.status_code==409: error='email_agent_disabled'
         with store.transaction(row['tenant']) as c:
-            c.execute(update(connections).where(*fence).values(error=error,owner=None,next_sync=int(time.time())+60))
+            c.execute(update(connections).where(*fence).values(error=error,owner=None,next_sync=int(time.time())+(300 if error==row['error'] else 60)))
             store.audit(c,row['tenant'],'gmail.sync_failed.'+error)

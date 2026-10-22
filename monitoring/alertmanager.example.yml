@@ -1,0 +1,14 @@
+# Configure an authenticated HTTPS receiver before using this outside a local test.
+# Never put a webhook secret in Git. Mount the real configuration as a secret file.
+global:
+  resolve_timeout: 5m
+route:
+  receiver: operator
+  group_by: [alertname]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 4h
+receivers:
+  - name: operator
+    # Add email_configs, slack_configs or webhook_configs here for your approved destination.
+    # The empty example receiver deliberately sends nothing.

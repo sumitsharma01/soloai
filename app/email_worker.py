@@ -14,12 +14,21 @@ async def serve(engine):
     loop = asyncio.get_running_loop()
     for sig in (signal.SIGINT, signal.SIGTERM): loop.add_signal_handler(sig, stop.set)
     failures = 0
+    last_operations = 0
     while not stop.is_set():
         try:
+            import time
+            if time.monotonic()-last_operations>30:
+                from app.operations import collect,notify_one
+                collect(store)
+                await notify_one(store)
+                last_operations=time.monotonic()
             store.recover()
             store.purge()
             from app.gmail import sync_one
             await sync_one(store)
+            from app.outlook import sync_one as sync_outlook
+            await sync_outlook(store)
             worked = await process_one(store)
             from app.email_delivery import automatic_one
             worked = await automatic_one(store) or worked

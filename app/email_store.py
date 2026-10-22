@@ -1,10 +1,11 @@
 """PostgreSQL is both queue and source of truth. Transactions fence workers and reviews."""
+import os
 import hashlib
 import json
 import secrets
 import time
 from contextlib import contextmanager
-from sqlalchemy import select, update, text
+from sqlalchemy import select, update, text, func
 from fastapi import HTTPException
 from app.email_schema import jobs, tool_calls
 from app.email_tools import EmailFailure
@@ -14,7 +15,9 @@ TERMINAL = {'APPROVED', 'REJECTED', 'FAILED', 'COMPLETED'}
 
 
 class EmailStore:
-    def __init__(self, engine): self.engine = engine
+    def __init__(self, engine):
+        self.engine = engine
+        self.concurrency = max(1,min(int(os.getenv('SOLOAI_EMAIL_TENANT_CONCURRENCY','1')),4))
 
     @contextmanager
     def transaction(self, tenant=None):
@@ -38,12 +41,15 @@ class EmailStore:
         c.execute(text('INSERT INTO audit VALUES (:id,:t,:action,:now)'),
                   {'id': secrets.token_hex(16), 't': tenant, 'action': action, 'now': int(time.time())})
 
-    def enqueue(self, tenant, event, config, retention, mailbox_owner=None, source=None):
+    def enqueue(self, tenant, event, config, retention, mailbox_owner=None, source=None, mailbox_provider='gmail'):
         now = int(time.time())
         fingerprint = hashlib.sha256(json.dumps(event.model_dump(), sort_keys=True).encode()).hexdigest()
         with self.transaction(tenant) as c:
             if mailbox_owner is not None:
-                from app.gmail import connections
+                if mailbox_provider=='outlook':
+                    from app.outlook import connections
+                else:
+                    from app.gmail import connections
                 if not c.execute(select(connections.c.tenant).where(connections.c.tenant==tenant,
                     connections.c.owner==mailbox_owner)).first():
                     raise EmailFailure('gmail_disconnected')
@@ -108,12 +114,15 @@ class EmailStore:
 
     def claim(self, timeout):
         now = int(time.time())
+        active_jobs=jobs.alias('active_jobs')
         with self.engine.connect() as c:
             candidates = c.execute(select(jobs.c.tenant, jobs.c.execution_id).where(
-                jobs.c.status == 'QUEUED', jobs.c.available_at <= now)
+                jobs.c.status == 'QUEUED', jobs.c.available_at <= now,
+                select(func.count()).select_from(active_jobs).where(active_jobs.c.tenant==jobs.c.tenant,active_jobs.c.status=='RUNNING').scalar_subquery()<self.concurrency)
                 .order_by(jobs.c.available_at, jobs.c.created_at).limit(20)).mappings().all()
         for candidate in candidates:
             with self.transaction(candidate['tenant']) as c:
+                if c.execute(select(func.count()).select_from(jobs).where(jobs.c.tenant==candidate['tenant'],jobs.c.status=='RUNNING')).scalar_one()>=self.concurrency:continue
                 owner = secrets.token_hex(16)
                 changed = c.execute(update(jobs).where(jobs.c.tenant == candidate['tenant'],
                     jobs.c.execution_id == candidate['execution_id'], jobs.c.status == 'QUEUED',
@@ -271,6 +280,9 @@ class EmailStore:
     def purge(self):
         """Keep deduplication tombstones and metadata, remove expired review content."""
         now = int(time.time())
+        from app.reliability_schema import identities
+        from sqlalchemy import delete
+        with self.transaction() as c:c.execute(delete(identities).where(identities.c.expires<=now))
         with self.engine.connect() as c:
             tenants = c.execute(select(jobs.c.tenant).where(jobs.c.expires_at <= now,
                 jobs.c.content.is_not(None)).distinct()).scalars().all()

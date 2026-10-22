@@ -65,3 +65,9 @@ def migrate(engine):
         migrate_gmail(c)
         from app.inbox_schema import migrate as migrate_inbox
         migrate_inbox(c)
+
+        from app.reliability_schema import migrate as migrate_reliability
+        migrate_reliability(c)
+
+        from app.outlook import migrate as migrate_outlook
+        migrate_outlook(c)

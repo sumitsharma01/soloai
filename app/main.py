@@ -58,7 +58,7 @@ async def lifespan(app):
             migrate(engine)
         from app.email_schema import versions
         with engine.connect() as c:
-            if c.execute(versions.select().where(versions.c.version==4)).first() is None:
+            if c.execute(versions.select().where(versions.c.version==6)).first() is None:
                 raise RuntimeError('Run python -m scripts.email_admin migrate before enabling email workflows')
     metrics_server=None
     if os.getenv('SOLOAI_METRICS_PORT'):
@@ -80,7 +80,7 @@ async def database_failure(request, exc):
     return JSONResponse({'detail':'Database temporarily unavailable'},503)
 @app.middleware('http')
 async def safeguards(request, call_next):
-    if request.method in ('POST','PATCH','DELETE'):
+    if request.method in ('POST','PUT','PATCH','DELETE'):
         if request.headers.get('origin') and request.headers['origin'] != os.getenv('PUBLIC_ORIGIN', 'http://127.0.0.1:8000'):
             return JSONResponse({'detail':'Origin not allowed'},403)
         chunks=[]; total=0
@@ -216,12 +216,18 @@ async def execute(b,t):
             reply=('Subject: '+answer.subject+'\n\n' if answer.subject else '')+answer.reply
             needs_human=answer.needs_human
         elif endpoint:
-            from azure.identity.aio import DefaultAzureCredential
-            async with DefaultAzureCredential() as cred: token=(await cred.get_token('https://cognitiveservices.azure.com/.default')).token
-            async with httpx.AsyncClient(timeout=45) as client:
-                response=await client.post(endpoint.rstrip('/')+'/openai/v1/chat/completions',headers={'Authorization':'Bearer '+token},json={'model':os.environ['AZURE_OPENAI_DEPLOYMENT'],'messages':[{'role':'system','content':PACKAGES[a]['instructions']+'\nBusiness guidance:\n'+cfg['guidance']},{'role':'user','content':b.content}],'max_completion_tokens':1024})
-                response.raise_for_status();result=response.json()
-            reply=result['choices'][0]['message']['content'];used=result.get('usage',{}).get('total_tokens',reserve)
+            if os.getenv('AZURE_OPENAI_API_KEY'):
+                from app.azure_model import client as azure_client
+                async with azure_client() as client:
+                    result=await client.chat.completions.create(model=os.environ['AZURE_OPENAI_DEPLOYMENT'],messages=[{'role':'system','content':PACKAGES[a]['instructions']+'\nBusiness guidance:\n'+cfg['guidance']},{'role':'user','content':b.content}],max_tokens=1024)
+                    reply=result.choices[0].message.content;used=result.usage.total_tokens
+            else:
+                from azure.identity.aio import DefaultAzureCredential
+                async with DefaultAzureCredential() as cred: token=(await cred.get_token('https://cognitiveservices.azure.com/.default')).token
+                async with httpx.AsyncClient(timeout=45) as client:
+                    response=await client.post(endpoint.rstrip('/')+'/openai/v1/chat/completions',headers={'Authorization':'Bearer '+token},json={'model':os.environ['AZURE_OPENAI_DEPLOYMENT'],'messages':[{'role':'system','content':PACKAGES[a]['instructions']+'\nBusiness guidance:\n'+cfg['guidance']},{'role':'user','content':b.content}],'max_completion_tokens':1024})
+                    response.raise_for_status();result=response.json()
+                reply=result['choices'][0]['message']['content'];used=result.get('usage',{}).get('total_tokens',reserve)
         else:
             reply=('Subject: Your support request\n\n' if a=='email-support' else '')+'Thanks for reaching out! '+(cfg['guidance'] or 'Please contact our team for help with this request.')+'\n\n[Local demo: this is a simulated response.]'
             used=min(reserve, len(reply.encode())+len(b.content.encode()))
@@ -332,3 +338,12 @@ app.include_router(supabase_router(engine, tenant, text, audit))
 
 from app.inbox import router as inbox_router
 app.include_router(inbox_router(email_store, tenant))
+
+from app.knowledge import router as knowledge_router
+app.include_router(knowledge_router(email_store, tenant))
+
+from app.operations import router as operations_router
+app.include_router(operations_router(email_store, tenant))
+
+from app.outlook import router as outlook_router
+app.include_router(outlook_router(lambda: engine, tenant, email_enabled))

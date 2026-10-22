@@ -37,3 +37,9 @@ def observe(event, fields):
 def start(port):
     # Loopback only. Multi-worker/replica production metrics need a collector design.
     return start_http_server(port,addr='127.0.0.1')
+
+QUEUE_DEPTH=Gauge('soloai_email_queue_depth','Current unexpired jobs by state',['status'])
+QUEUE_AGE=Gauge('soloai_email_queue_oldest_seconds','Age of oldest queued email')
+REVIEW_AGE=Gauge('soloai_email_review_oldest_seconds','Age of oldest email awaiting review')
+MAILBOX_ERRORS=Gauge('soloai_mailbox_errors','Mailboxes needing attention')
+OPS_HEARTBEAT=Gauge('soloai_operations_last_success_timestamp_seconds','Last successful database health collection')

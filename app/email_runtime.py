@@ -14,6 +14,10 @@ MAX_SECONDS = 90
 
 
 def configuration():
+    if not os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') and os.getenv('AZURE_OPENAI_ENDPOINT') and os.getenv('AZURE_OPENAI_API_KEY'):
+        import hashlib
+        return {'agent_name':'soloai-email-direct','agent_version':hashlib.sha256(INSTRUCTIONS.encode()).hexdigest(),
+                'model':os.environ['AZURE_OPENAI_DEPLOYMENT']}
     result = {'agent_name': os.getenv('AZURE_FOUNDRY_EMAIL_AGENT_NAME', 'soloai-email'),
               'agent_version': os.getenv('AZURE_FOUNDRY_EMAIL_AGENT_VERSION', ''),
               'model': os.getenv('AZURE_FOUNDRY_MODEL', '')}
@@ -84,6 +88,11 @@ def provider_failure(exc):
         return EmailFailure('foundry_unavailable')  # Outcome may be unknown; do not replay.
     if isinstance(exc, (APIStatusError, HttpResponseError)):
         status = getattr(exc, 'status_code', None)
+        body = getattr(exc, 'body', None)
+        if isinstance(body, dict):
+            error = body.get('error', body)
+            if isinstance(error, dict) and error.get('code') in ('content_filter', 'ResponsibleAIPolicyViolation'):
+                return EmailFailure('model_safety_blocked')
         return EmailFailure('foundry_unavailable' if status in (429, 502, 503, 504) else 'foundry_rejected',
                             transient=status in (429, 503))
     return EmailFailure('invalid_foundry_response')
@@ -118,7 +127,9 @@ async def run(store, context, provider, gateway=None):
             try: answer = SupportReply.model_validate_json(response.output_text)
             except (ValidationError, ValueError): raise EmailFailure('invalid_foundry_response') from None
             if answer.channel != 'email_draft': raise EmailFailure('invalid_foundry_response')
-            if gateway.missing_information: answer.needs_human = True
+            from app.email_review_policy import requires_review
+            if gateway.missing_information or requires_review(context["content"], answer.reply):
+                answer.needs_human = True
             return answer
         if len(calls) + gateway.count > 3: raise EmailFailure('tool_limit')
         ids = [call.call_id for call in calls]
@@ -132,7 +143,12 @@ async def run(store, context, provider, gateway=None):
     raise EmailFailure('tool_limit')
 
 
-async def process_one(store, provider_factory=FoundryProvider):
+async def process_one(store, provider_factory=None):
+    if provider_factory is None:
+        if not os.getenv("AZURE_FOUNDRY_PROJECT_ENDPOINT") and os.getenv("AZURE_OPENAI_ENDPOINT"):
+            from app.azure_model import DirectEmailProvider
+            provider_factory = DirectEmailProvider
+        else: provider_factory = FoundryProvider
     context = store.claim(MAX_SECONDS)
     if context is None: return False
     answer = failure = None

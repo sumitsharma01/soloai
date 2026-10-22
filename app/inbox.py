@@ -1,3 +1,4 @@
+from app.email_outcome import outcome
 """Support inbox. Session-only management; delivery permissions are checked in code."""
 import os
 from typing import Literal
@@ -61,7 +62,11 @@ def row_for(c, tenant, execution):
     return row
 
 
-def send_permission(c, tenant):
+def send_permission(c, tenant, provider='gmail'):
+    if provider=='outlook':
+        from app.outlook import connections
+        return bool(c.execute(select(connections.c.can_send).where(connections.c.tenant==tenant)).scalar())
+    if provider!='gmail':return False
     from app.gmail import connections, digest
     connection=c.execute(select(connections).where(connections.c.tenant==tenant)).mappings().first()
     granted=c.execute(select(grants.c.token_digest).where(grants.c.tenant==tenant)).scalar()
@@ -106,7 +111,7 @@ def router(get_store, tenant):
     @routes.post('/instructions/assist')
     def assist(body:AssistInput,t=Depends(tenant)):
         from app import instruction_assist
-        if not os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') or not os.getenv('AZURE_FOUNDRY_MODEL'):
+        if not ((os.getenv('AZURE_FOUNDRY_PROJECT_ENDPOINT') and os.getenv('AZURE_FOUNDRY_MODEL')) or (os.getenv('AZURE_OPENAI_ENDPOINT') and os.getenv('AZURE_OPENAI_API_KEY') and os.getenv('AZURE_OPENAI_DEPLOYMENT'))):
             raise HTTPException(503,'AI assistance needs the Azure Foundry connection. Your notes are unchanged.')
         store=get_store();now=int(time.time());reserve=instruction_assist.reservation(body.content)
         with store.transaction(t) as c:
@@ -140,11 +145,11 @@ def router(get_store, tenant):
                 delivery=c.execute(select(deliveries).where(deliveries.c.tenant==t,deliveries.c.execution_id==row['execution_id'])).mappings().first()
                 result.append(dict(id=row['execution_id'],subject='Content expired' if expired else source.get('subject') or row['subject'] or 'Support email',
                     sender=source.get('recipient','Forwarded event'),status=row['status'],needs_human=row['needs_human'],
-                    created=row['created_at'],labels=json.loads(ticket['labels']),delivery=dict(delivery) if delivery else None))
+                    created=row['created_at'],labels=json.loads(ticket['labels']),delivery=dict(delivery) if delivery else None, **outcome(row,delivery)))
             cfg=dict(c.execute(select(settings).where(settings.c.tenant==t)).mappings().one())
             cfg['allowed_labels']=json.loads(cfg['allowed_labels']);cfg.pop('tenant')
             return dict(emails=result,labels=[dict(r) for r in c.execute(select(labels.c.id,labels.c.name,labels.c.keywords,labels.c.colour).where(labels.c.tenant==t)).mappings()],
-                rules=cfg,send_authorized=send_permission(c,t),instructions=[dict(r) for r in c.execute(select(instructions.c.id,instructions.c.content,instructions.c.label_id,instructions.c.active,instructions.c.revision).where(instructions.c.tenant==t).order_by(instructions.c.created)).mappings()])
+                rules=cfg,send_authorized=send_permission(c,t) or send_permission(c,t,'outlook'),instructions=[dict(r) for r in c.execute(select(instructions.c.id,instructions.c.content,instructions.c.label_id,instructions.c.active,instructions.c.revision).where(instructions.c.tenant==t).order_by(instructions.c.created)).mappings()])
 
     @routes.get('/emails/{execution}')
     def detail(execution:str,t=Depends(tenant)):
@@ -155,8 +160,8 @@ def router(get_store, tenant):
             expired=row['expires_at']<=int(time.time())
             source=json.loads(ticket['source']) if ticket['source'] and not expired else {}
             delivery=c.execute(select(deliveries).where(deliveries.c.tenant==t,deliveries.c.execution_id==execution)).mappings().first()
-            return result | dict(labels=json.loads(ticket['labels']),revision=ticket['revision'],local_guidance='' if expired else ticket['local_guidance'],
-                recipient=source.get('recipient'),original_subject=source.get('subject'),send_authorized=send_permission(c,t),delivery=dict(delivery) if delivery else None)
+            return result | outcome(row,delivery) | dict(labels=json.loads(ticket['labels']),revision=ticket['revision'],local_guidance='' if expired else ticket['local_guidance'],
+                recipient=source.get('recipient'),original_subject=source.get('subject'),send_authorized=send_permission(c,t,source.get('provider','gmail')),delivery=dict(delivery) if delivery else None)
 
     @routes.put('/emails/{execution}')
     def edit(execution:str,body:DraftInput,t=Depends(tenant)):
@@ -184,8 +189,10 @@ def router(get_store, tenant):
             enabled=c.execute(text("SELECT enabled FROM agents WHERE tenant=:t AND id='email-support'"),{'t':t}).scalar()
             if not enabled: raise HTTPException(409,'Enable Email Support first')
             store.admit(c,t,int(time.time()))
+            from app.email_runtime import configuration
             epoch=c.execute(text('SELECT stopped FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
             c.execute(update(jobs).where(jobs.c.tenant==t,jobs.c.execution_id==execution).values(status='QUEUED',epoch=epoch,
+                **configuration(),
                 available_at=int(time.time()),error=None,attempts=0,owner=None,lease_until=None,completed_at=None,draft=None,needs_human=None,
                 uncertain_tokens=row['uncertain_tokens']+row['reserved_tokens'],reserved_tokens=0))
             c.execute(update(tickets).where(tickets.c.tenant==t,tickets.c.execution_id==execution).values(revision=body.revision+1))
@@ -200,7 +207,7 @@ def router(get_store, tenant):
             bootstrap(c,t);valid_labels(c,t,body.allowed_labels)
             old=c.execute(select(settings).where(settings.c.tenant==t)).mappings().one()
             if old['revision']!=body.revision: raise HTTPException(409,'Rules changed. Refresh before saving.')
-            if body.automatic and (not body.allowed_labels or not send_permission(c,t)):
+            if body.automatic and (not body.allowed_labels or not (send_permission(c,t) or send_permission(c,t,'outlook'))):
                 raise HTTPException(409,'Authorize Gmail sending and choose at least one label first')
             c.execute(update(settings).where(settings.c.tenant==t).values(automatic=body.automatic,allowed_labels=json.dumps(body.allowed_labels),
                 daily_limit=body.daily_limit,revision=body.revision+1,enabled_at=int(time.time())))

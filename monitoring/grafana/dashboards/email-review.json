@@ -4,44 +4,288 @@
   "schemaVersion": 39,
   "version": 1,
   "refresh": "10s",
-  "time": {"from": "now-1h", "to": "now"},
-  "tags": ["soloai", "email"],
+  "time": {
+    "from": "now-1h",
+    "to": "now"
+  },
+  "tags": [
+    "soloai",
+    "email"
+  ],
   "panels": [
     {
-      "id": 1, "title": "Worker scrape healthy", "type": "stat",
-      "gridPos": {"x": 0, "y": 0, "w": 8, "h": 6},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "up{job=\"soloai-email-worker\"}"}]
+      "id": 1,
+      "title": "Worker scrape healthy",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 8,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "up{job=\"soloai-email-worker\"}"
+        }
+      ]
     },
     {
-      "id": 2, "title": "Operator decisions", "type": "timeseries",
-      "gridPos": {"x": 8, "y": 0, "w": 16, "h": 6},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "sum by (status) (increase(soloai_email_reviews_total[1h]))", "legendFormat": "{{status}}"}]
+      "id": 2,
+      "title": "Operator decisions",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 8,
+        "y": 0,
+        "w": 16,
+        "h": 6
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (increase(soloai_email_reviews_total[1h]))",
+          "legendFormat": "{{status}}"
+        }
+      ]
     },
     {
-      "id": 3, "title": "Tool calls per second", "type": "timeseries",
-      "gridPos": {"x": 0, "y": 6, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "sum by (tool,status) (rate(soloai_tool_calls_total[5m]))", "legendFormat": "{{tool}} {{status}}"}]
+      "id": 3,
+      "title": "Tool calls per second",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (tool,status) (rate(soloai_tool_calls_total[5m]))",
+          "legendFormat": "{{tool}} {{status}}"
+        }
+      ]
     },
     {
-      "id": 4, "title": "Tool p95 latency (seconds)", "type": "timeseries",
-      "gridPos": {"x": 12, "y": 6, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "histogram_quantile(0.95, sum by (le,tool) (rate(soloai_tool_duration_seconds_bucket[5m])))", "legendFormat": "{{tool}}"}]
+      "id": 4,
+      "title": "Tool p95 latency (seconds)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 6,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le,tool) (rate(soloai_tool_duration_seconds_bucket[5m])))",
+          "legendFormat": "{{tool}}"
+        }
+      ]
     },
     {
-      "id": 5, "title": "Worker tokens (reported versus reserved)", "type": "timeseries",
-      "gridPos": {"x": 0, "y": 14, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "sum by (usage_kind) (rate(soloai_tokens_total{job=\"soloai-email-worker\"}[5m]))", "legendFormat": "{{usage_kind}}"}]
+      "id": 5,
+      "title": "Worker tokens (reported versus reserved)",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (usage_kind) (rate(soloai_tokens_total{job=\"soloai-email-worker\"}[5m]))",
+          "legendFormat": "{{usage_kind}}"
+        }
+      ]
     },
     {
-      "id": 6, "title": "Interrupted jobs failed safely", "type": "stat",
-      "gridPos": {"x": 12, "y": 14, "w": 12, "h": 8},
-      "datasource": {"type": "prometheus", "uid": "soloai-prometheus"},
-      "targets": [{"refId": "A", "expr": "sum(increase(soloai_email_worker_recoveries_total[1h]))"}]
+      "id": 6,
+      "title": "Interrupted jobs failed safely",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 14,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(soloai_email_worker_recoveries_total[1h]))"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "type": "stat",
+      "title": "Queued email jobs",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 0,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "max(soloai_email_queue_depth{status=\"QUEUED\"})",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 8,
+      "type": "stat",
+      "title": "Oldest queued email",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 6,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "max(soloai_email_queue_oldest_seconds)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 9,
+      "type": "stat",
+      "title": "Mailboxes needing attention",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 12,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "max(soloai_mailbox_errors)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
+    },
+    {
+      "id": 10,
+      "type": "stat",
+      "title": "Oldest human review",
+      "datasource": {
+        "type": "prometheus",
+        "uid": "soloai-prometheus"
+      },
+      "gridPos": {
+        "h": 5,
+        "w": 6,
+        "x": 18,
+        "y": 22
+      },
+      "targets": [
+        {
+          "expr": "max(soloai_email_review_oldest_seconds)",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s"
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        }
+      }
     }
   ]
 }

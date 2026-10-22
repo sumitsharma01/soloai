@@ -43,7 +43,10 @@ async function showGmailConnection() {
       const disconnect = document.createElement('button'); disconnect.textContent = 'Disconnect Gmail';
       disconnect.onclick = async () => { try { await api('integrations/gmail/disconnect','POST'); await showGmailConnection(); } catch(error) { toast(error.message); } };
       const note = document.createElement('p'); note.textContent = 'Disconnect stops future syncing and deletes saved tokens. Already queued drafts remain subject to retention. You can also revoke access in your Google Account. Sync runs approximately every 60 seconds while the worker is running.';
-      target.append(disconnect,note);
+      const reconnect=document.createElement('button');reconnect.textContent='Reconnect with Google';
+      reconnect.onclick=async()=>{try{const r=await api('integrations/gmail/connect','POST',{allow_send:!!state.send_authorized});location.assign(r.url)}catch(e){toast(e.message)}};
+      target.append(reconnect,disconnect,note);
+      if(state.error==='gmail_history_expired'){const reset=document.createElement('button');reset.textContent='Restart sync from now';reset.onclick=async()=>{if(!confirm('The missed period will not be imported. Review it manually in Gmail. Automatic replies will be paused. Restart from now?'))return;try{await api('integrations/gmail/reset-sync','POST');await showGmailConnection()}catch(e){toast(e.message)}};target.append(reset)}
     }
     const refresh = document.createElement('button'); refresh.textContent = 'Refresh connection status'; refresh.onclick = showGmailConnection; target.append(refresh);
   } catch(error) { target.textContent = error.message; }
@@ -55,15 +58,16 @@ async function showIntegrations() {
   page.innerHTML = `<section class="panel"><h2>Your tools, in one place</h2><p>Your website can stay on Vercel, AWS or wherever you host it. Connect only the information your agent needs.</p><div class="steps"><span>1 Choose a tool</span><span>2 Review access</span><span>3 Connect</span></div></section>
   <div class="agents">
     <section class="card"><div class="icon email">✉</div><h2>Gmail</h2><p>Read customer emails and prepare replies. Sending needs separate Google authorization; deleting is never allowed.</p><p id="gmail-summary" role="status">Checking connection…</p><button class="primary" id="open-gmail">Connect with Google</button></section>
-    <section class="card"><div class="icon">⌁</div><h2>Booking information</h2><p>Let the email agent look up a booking through an approved, read-only connection.</p><p id="booking-summary" role="status">Checking connection…</p><p>Your SoloAI operator sets up this connection for your workspace. Self-service setup is not available yet.</p></section>
-    <section class="card"><div class="icon">⌁</div><h2>Supabase</h2><p>Tell us where your booking data lives and what the email agent may read.</p><p>Guided setup. Authorization requires operator configuration.</p><button class="primary" id="open-supabase">Set up Supabase</button></section>
-  </div><details class="panel"><summary>Planned integrations</summary><div class="agents">
-    <section class="card"><span class="chip">Planned</span><h2>More tools</h2><p>Outlook and other services will appear here as their connectors become available.</p><button disabled>Coming soon</button></section>
+    <section class="card"><div class="icon">⌁</div><h2>Booking information</h2><p>Let the email agent look up a booking through an approved, read-only connection.</p><p id="booking-summary" role="status">Checking connection…</p><p>Use Supabase for a restricted live lookup. Legacy MCP and local snapshots are development-only.</p></section>
+    <section class="card"><div class="icon">⌁</div><h2>Supabase</h2><p>Connect a restricted booking function in your Supabase project.</p><p>Read-only access. Customer verification required before lookup.</p><button class="primary" id="open-supabase">Set up Supabase</button></section>
+  </div><details class="panel"><summary>More integrations</summary><div class="agents">
+    <section class="card"><span class="chip">Pilot connector</span><h2>Outlook</h2><p>Connect Microsoft mail with delegated read access and optional sending.</p><button id="open-outlook">Connect Outlook</button></section>
   </div></details><section class="panel"><h2>Next: try your agent</h2><p>Open My agents, add your business guidance and turn on the agent. With Gmail and the email worker configured, new messages appear in Email review. Use Support Inbox to edit drafts, send reviewed replies and manage automatic sending.</p><details><summary>For developers: connect your own application</summary><p>Use the server API when you need to send events from your app. This is optional for Gmail.</p><button id="open-api">Application API setup</button></details></section>`;
   const connect = page.querySelector('#open-gmail');
   connect.onclick = () => beginGmailConnection(connect);
   page.querySelector('#open-api').onclick = showApplicationConnection;
-  page.querySelector('#open-supabase').onclick = showSupabaseSetup;
+  page.querySelector('#open-supabase').onclick = showBookingConnection;
+  page.querySelector('#open-outlook').onclick = showOutlookConnection;
   const gmail = page.querySelector('#gmail-summary');
   const booking = page.querySelector('#booking-summary');
   await Promise.all([

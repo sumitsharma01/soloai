@@ -15,6 +15,15 @@ def reservation(content):
 
 
 def rewrite(content):
+    if not os.getenv("AZURE_FOUNDRY_PROJECT_ENDPOINT") and os.getenv("AZURE_OPENAI_API_KEY"):
+        from openai import AzureOpenAI
+        with AzureOpenAI(azure_endpoint=os.environ["AZURE_OPENAI_ENDPOINT"],api_key=os.environ["AZURE_OPENAI_API_KEY"],api_version=os.getenv("AZURE_OPENAI_API_VERSION","2025-01-01-preview"),max_retries=0,timeout=45) as client:
+            response=client.chat.completions.create(model=os.environ["AZURE_OPENAI_DEPLOYMENT"],messages=[{"role":"system","content":PROMPT},{"role":"user","content":content}],max_tokens=MAX_OUTPUT)
+        suggestion=(response.choices[0].message.content or "").strip()
+        if response.choices[0].finish_reason!="stop" or not suggestion or len(suggestion)>1000:
+            raise ValueError("Invalid suggestion")
+        return suggestion,response.usage.total_tokens
+
     from azure.ai.projects import AIProjectClient
     from azure.identity import DefaultAzureCredential
     with DefaultAzureCredential(exclude_interactive_browser_credential=True) as credential:

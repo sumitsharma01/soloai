@@ -164,7 +164,8 @@ def test_runtime_failures(setup,mode,code):
 
 
 def test_quota_concurrency_and_stop(setup):
-    s=setup;first=enqueue(s);enqueue(s,'evt-2')
+    s=setup;s.store.concurrency=2
+    first=enqueue(s);enqueue(s,'evt-2')
     x,y=s.store.claim(90),s.store.claim(90)
     with s.engine.begin() as c: c.execute(text('UPDATE tenants SET budget=1000 WHERE id=:t'),{'t':s.tenants[0]})
     def reserve(ctx):
