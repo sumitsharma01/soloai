@@ -20,7 +20,7 @@ def bootstrap(c, tenant):
     if c.execute(select(settings.c.tenant).where(settings.c.tenant==tenant)).first(): return
     c.execute(settings.insert().values(tenant=tenant, automatic=False, allowed_labels='[]', daily_limit=20,revision=1,enabled_at=0))
     for id, name, keywords in DEFAULT_LABELS:
-        c.execute(labels.insert().values(tenant=tenant,id=id,name=name,keywords=keywords,colour={'refund':'amber','new-order':'green','cancellation':'red','query':'blue'}.get(id,'slate')))
+        c.execute(labels.insert().values(tenant=tenant,id=id,name=name,keywords=keywords,colour={'refund':'amber','new-order':'green','cancellation':'red','query':'blue','miscellaneous':'purple'}.get(id,'slate')))
 
 
 def create_ticket(c, tenant, execution, content, source=None):
@@ -73,7 +73,7 @@ class Input(BaseModel):
 class LabelInput(Input):
     name: str=Field(min_length=1,max_length=60,pattern=r'.*\S.*')
     keywords: str=Field(default='',max_length=500)
-    colour: Literal['slate','blue','green','amber','red','purple','teal','pink']='slate'
+    colour: Literal['slate','blue','green','amber','red','purple','teal','pink'] | None=None
 class AssistInput(Input):
     content: str=Field(min_length=1,max_length=1000,pattern=r'[\s\S]*\S[\s\S]*')
 class RulesInput(Input):
@@ -213,7 +213,12 @@ def router(get_store, tenant):
         with store.transaction(t) as c:
             bootstrap(c,t)
             if len(c.execute(select(labels.c.id).where(labels.c.tenant==t)).all())>=30: raise HTTPException(409,'Limit: 30 labels')
-            c.execute(labels.insert().values(tenant=t,id=secrets.token_hex(12),**body.model_dump()))
+            values=body.model_dump()
+            if values['colour'] is None:
+                palette=['blue','green','amber','red','purple','teal','pink','slate']
+                existing=list(c.execute(select(labels.c.colour).where(labels.c.tenant==t)).scalars())
+                values['colour']=min(palette,key=existing.count)
+            c.execute(labels.insert().values(tenant=t,id=secrets.token_hex(12),**values))
             store.audit(c,t,'inbox.label_created')
         return {'saved':True}
 
@@ -221,7 +226,7 @@ def router(get_store, tenant):
     def edit_label(id:str,body:LabelInput,t=Depends(tenant)):
         store=get_store()
         with store.transaction(t) as c:
-            if not c.execute(update(labels).where(labels.c.tenant==t,labels.c.id==id).values(**body.model_dump())).rowcount: raise HTTPException(404,'Label not found')
+            if not c.execute(update(labels).where(labels.c.tenant==t,labels.c.id==id).values(**body.model_dump(exclude_none=True))).rowcount: raise HTTPException(404,'Label not found')
             c.execute(update(settings).where(settings.c.tenant==t).values(automatic=False,revision=settings.c.revision+1))
             store.audit(c,t,'inbox.label_updated_automation_paused')
         return {'saved':True}

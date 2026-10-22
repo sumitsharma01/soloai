@@ -110,3 +110,5 @@ Label settings in the local preview:
 Writing assistance, including the connection message shown when Foundry is not configured:
 
 ![Business instruction assistance](screenshots/inbox-instruction-assistance.png)
+
+New workspaces start with amber Refund, green New order, red Cancellation, blue Query and purple Miscellaneous labels. New custom labels default to the least-used colour in the workspace. You can choose another colour before creating the label or change it later. Colours repeat once the palette is used up. Existing saved colours are preserved.
