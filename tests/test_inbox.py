@@ -20,7 +20,7 @@ def ready(s, human=True):
     id=enqueue(s,content='What are your opening hours?')
     cipher=gmail.settings()[2];encrypted=gmail.seal(cipher,s.tenants[0],'refresh')
     with s.store.transaction(s.tenants[0]) as c:
-        c.execute(gmail.connections.insert().values(tenant=s.tenants[0],email='owner@gmail.com',refresh_token=encrypted,history_id='1',next_sync=0,created=1))
+        c.execute(gmail.connections.insert().values(tenant=s.tenants[0],email='owner@gmail.com',refresh_token=encrypted,history_id='1',next_sync=0,last_sync=int(time.time()),created=1))
         c.execute(grants.insert().values(tenant=s.tenants[0],token_digest=gmail.digest(encrypted)))
         c.execute(update(jobs).where(jobs.c.execution_id==id).values(draft='We open at 9am.',status='WAITING_FOR_REVIEW',needs_human=human))
         c.execute(update(tickets).where(tickets.c.execution_id==id).values(source=json.dumps(dict(recipient='customer@example.com',mailbox='owner@gmail.com',subject='Opening hours',message_id='<original@example.com>',thread_id='abc123',automated=False))))
