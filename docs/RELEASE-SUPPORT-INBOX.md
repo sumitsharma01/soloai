@@ -7,11 +7,11 @@
 - Editable keyword labels and reusable business instructions.
 - Separate Gmail send consent, reviewed sending and opt-in automatic replies.
 - A durable delivery ledger, daily send limit and pause control.
-- Migration 003, delivery metrics and a recovery runbook.
+- Database migrations through version 006, delivery metrics and recovery guidance.
 
 ## What stays unchanged
 
-The agent creates a draft through the existing Foundry integration. It does not receive a send tool or unrestricted database access. Supabase remains a setup-request form, and the booking MCP integration remains read-only. Legacy approve/reject endpoints retain their original meaning: approval records a review decision and does not send.
+The agent creates drafts through a registered Foundry agent or a direct Azure model deployment. It does not receive a send tool or unrestricted database access. Supabase now supports a restricted booking function with customer verification. The older setup-request form does not grant access. MCP remains a development option for read-only booking lookups. Legacy approve/reject endpoints retain their original meaning: approval records a review decision and does not send.
 
 ## Before upgrading
 
@@ -24,3 +24,5 @@ Gmail connections stay read-only until the owner approves the extra send scope. 
 Delivery tests use mocked Gmail responses. Browser checks use fictional customer messages. No real email was sent and no live send grant was approved during implementation. Check the pull request's CI result for the PostgreSQL run, dependency audit and container build.
 
 See [Support Inbox](SUPPORT-INBOX.md) for daily use and [Email delivery recovery](runbooks/EMAIL-DELIVERY.md) for failures.
+
+See [the email pilot report](EMAIL-PILOT.md) for the current test results and the known missing-price escalation issue.

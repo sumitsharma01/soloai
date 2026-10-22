@@ -115,7 +115,7 @@ flowchart LR
     M -->|"Draft B"| RB["Originating request B"]
 ```
 
-Registration creates one tenant and two disabled agent rows. Logging in creates a session; enabling an agent updates its row. **None of these actions runs Terraform or deploys a new Azure model/container.** Any app replica can handle the next request because sessions, configuration and counters are shared in Azure SQL.
+Registration creates one tenant and two disabled agent rows. Logging in creates a session; enabling an agent updates its row. **None of these actions runs Terraform or deploys a new Azure model/container.** Any app replica can handle the next request because sessions, configuration and counters are stored in the database. Queued Email Support requires PostgreSQL in production; SQLite is for local use. The older synchronous deployment supports Azure SQL.
 
 | Setting | What is separate today? |
 |---|---|
@@ -123,12 +123,12 @@ Registration creates one tenant and two disabled agent rows. Logging in creates 
 | Agent instance | Composite key `(tenant, agent_id)` |
 | Guidance and enabled state | Tenant-owned configuration |
 | Permissions | Fixed package capabilities: respond, or read supplied email and draft; no send/delete tool |
-| Connected tools | None yet; Gmail/Outlook/CRM OAuth is planned, not implemented |
+| Connected tools | Gmail OAuth, an Outlook pilot, approved policies and a restricted Supabase booking function |
 | Prompt context | Shared package instructions plus only that tenant's guidance and current message |
 | Usage and executions | Separate tenant counters and metadata rows |
 | Model deployment | Same endpoint and shared Azure quota |
 
-Future connectors must store credentials and permissions with a tenant owner, using OAuth and encrypted tokens. Sharing a model must never imply sharing mailbox credentials or customer context. Current isolation is enforced by application queries, not Azure SQL RLS or individual Azure identities. This remains a security boundary that needs testing and further hardening before public production.
+Connectors store credentials and permissions with a tenant owner, using OAuth and encrypted tokens. Sharing a model must never imply sharing mailbox credentials or customer context. Current isolation is enforced by application queries, not Azure SQL RLS or individual Azure identities. This remains a security boundary that needs testing and further hardening before public production.
 
 ## Reliability and scaling decisions
 
@@ -261,3 +261,7 @@ option for future requirements, not a free replacement for the current Cloudflar
 ![MCP booking architecture](screenshots/mcp-architecture.svg)
 
 The email worker's existing tool gateway can route get_booking through a tenant-scoped MCP client. Policy search stays local. Azure Foundry receives validated results, never connector credentials. Configuration and limitations are in [MCP.md](MCP.md). This adds no Azure resource and does not change the production PostgreSQL requirement for queued email.
+
+## Email processing
+
+Email Support uses a database queue and a separate worker. The worker calls Azure, runs approved read-only tools and saves a draft. Failures remain visible in Needs review. Sending has its own record so an uncertain provider response cannot trigger an automatic resend. See [email workflows](EMAIL-WORKFLOWS.md) and [the pilot report](EMAIL-PILOT.md) for the current behavior and test limits. The synchronous request limits described above do not describe this queued path.

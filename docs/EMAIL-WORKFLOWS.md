@@ -1,12 +1,11 @@
 # Queued Email Support
 
 SoloAI can receive a support email from a customer's server, look up a booking or
-policy, and prepare a draft for an operator. Approval records a decision. It never
-sends an email or changes a booking.
+policy, and prepare a draft for an operator. Approval records a decision. The approval endpoint does not send an email or change a booking. Sending is a separate action in Support Inbox.
 
 This is an opt-in extension of the existing app. `/api/try` and Website Chat keep
-their existing synchronous behavior. An optional [read-only Gmail connector](GMAIL.md)
-can forward new inbox mail. Outlook sync is not included; customer servers can also
+their existing synchronous behavior. The [Gmail connector](GMAIL.md)
+can forward new inbox mail, with separate consent for sending. Outlook polling is available as a pilot and still needs live verification; customer servers can also
 forward messages through the authenticated event API.
 
 ## Request flow
@@ -32,6 +31,8 @@ flowchart TD
 The dashboard accesses PostgreSQL through SoloAI's authenticated API, not directly.
 One application image runs in two processes: API and worker. PostgreSQL is the only
 queue. A transaction persists both the existing execution record and its email job.
+
+For a direct Azure model connection, see [model setup](AZURE-MODEL.md). The registered-agent setup follows below.
 
 ## Enable locally
 
