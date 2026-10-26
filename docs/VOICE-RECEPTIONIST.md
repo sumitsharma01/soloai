@@ -72,6 +72,20 @@ The signed-in workspace session acts as the verified demo customer. This is a de
 
 The server rechecks permissions before preparing an action and before confirming it. Each call allows at most eight tool calls. The model cannot directly confirm a write. Booking demo records remain in the local database; do not put real customer data in them.
 
+## Receptionist scope guardrail
+
+The server adds a receptionist-only policy after the saved business instructions. The assistant should decline unrelated coding, trivia and general advice, including requests framed as roleplay or “ignore your rules”. For mixed questions it should answer only the supported business part. If business information is missing, it should say so and offer your configured contact route.
+
+This is a model instruction guardrail, not a deterministic content filter. Audio is streamed as the model produces it; SoloAI does not independently classify each utterance before playback. Do not treat successful test cases as a guarantee against prompt injection. Tool permissions, workspace checks and confirmation requirements are enforced separately by the server.
+
+To repeat the live behavior checks, load the private Azure voice environment and run:
+
+```bash
+python scripts/eval_voice_scope.py
+```
+
+This uses paid Azure audio inference. It sends only synthetic questions and prints generated transcripts for review. Check that coding and prompt-disclosure requests are declined, the closing-hours question is answered, and no refund policy is invented. It does not exercise microphone recognition or acoustic attacks.
+
 ## Limits and privacy
 
 - One active call per workspace, with a maximum length of three minutes.
