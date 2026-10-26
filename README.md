@@ -12,6 +12,12 @@ Your application stays where it is, whether that is Vercel, AWS or another host.
 
 We are starting with customer support. Website Chat answers questions using your guidance. Email Support prepares replies for review. We will add more agents as these workflows prove useful and reliable.
 
+## Voice Receptionist preview
+
+Configure a receptionist and try a microphone conversation from SoloAI. Enter your business information, instructions and greeting, then choose the configured Azure model and a voice. No customer Azure account or LiveKit setup is required.
+
+This preview supports browser conversations. It does not connect a telephone number, transfer calls, save messages or change bookings. Azure audio usage is billed separately. See the [voice setup guide](docs/VOICE-RECEPTIONIST.md) for operator configuration and limits.
+
 ## Try it on your computer
 
 Install Python 3.13 and Git, then run:

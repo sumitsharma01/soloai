@@ -47,6 +47,9 @@ def init_db():
           'CREATE INDEX IF NOT EXISTS executions_tenant_created ON executions(tenant,created)',
           'CREATE INDEX IF NOT EXISTS audit_tenant_created ON audit(tenant,created)'
         ]: c.execute(text(sql))
+        if engine.dialect.name in ("sqlite","postgresql"):
+            from app.voice import initialize
+            initialize(c)
 @asynccontextmanager
 async def lifespan(app):
     if os.getenv('SOLOAI_INIT_SCHEMA','true').lower()=='true': init_db()
@@ -347,3 +350,6 @@ app.include_router(operations_router(email_store, tenant))
 
 from app.outlook import router as outlook_router
 app.include_router(outlook_router(lambda: engine, tenant, email_enabled))
+
+from app.voice import router as voice_router
+app.include_router(voice_router(lambda: engine, tenant, audit))

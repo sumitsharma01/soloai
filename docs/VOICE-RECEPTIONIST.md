@@ -1,58 +1,81 @@
 # Voice Receptionist
 
-Voice Receptionist is being developed on `feature/livekit-voice-receptionist`. It is not available in the agent store yet. This guide describes the first release and the services the SoloAI operator needs to provision.
+Voice Receptionist is a browser-call preview. Customers configure it in SoloAI; the operator connects one shared Azure realtime deployment. Each call loads only the signed-in workspace's settings and opens its own Azure conversation. LiveKit is not required for this version.
 
-## First release
+![Voice Receptionist setup in SoloAI](screenshots/voice-receptionist.png)
 
-A customer will choose Voice Receptionist in the agent store, enter their business details and test a conversation in their browser. SoloAI will manage the shared voice infrastructure. Customers will not need Azure or LiveKit credentials.
+## Set up your receptionist
 
-The setup form will ask for:
+1. Open **My agents → Voice Receptionist · Preview** or select it in the Agent store.
+2. Enter your business name, approved information, instructions and welcome message. Use `{Company}` in the greeting or instructions.
+3. Explain how callers can contact a person when the receptionist cannot help.
+4. Choose the model and voice. Only the deployment configured by the operator appears.
+5. Save, then select **Start test call** and allow microphone access. End the call when you finish.
+6. Reopen the page after a completed test and enable the setup when you are happy with it.
 
-- Business name and a short description.
-- Greeting, language and time zone.
-- Opening hours and approved answers to common questions.
-- How staff should follow up when the agent cannot help.
-- Call duration and usage limits within the workspace allowance.
+Enabling marks the tested configuration ready. It does not publish a phone service. Signed-in owners can run test calls while the setup is disabled. Editing settings clears the tested and enabled state. Calls already running retain their original instructions; disabling stops them.
 
-The first version will answer approved questions and collect requests for staff to review. It will not place orders, change bookings or take payments. Telephone numbers and live call transfer require a separate telephony connection. The browser test must not suggest that a phone number is already connected.
+Advanced settings contain language, maximum test length and whether callers can interrupt a reply. We do not ask customers for model keys, dispatch rules or infrastructure settings.
 
-The planned release sequence is **Save setup → Test a call → Enable**. Saving changes should not alter a call already in progress.
+## What works today
 
-## Azure deployment
+The receptionist can greet callers, answer from supplied business information and explain how to contact the team. It has no tools for transfers, bookings, orders, payments or saving messages. The server explicitly tells it not to claim those actions. These instructions reduce misleading responses, but do not guarantee that every spoken answer is correct. Test your business scenarios before relying on the answers.
 
-Create an Azure OpenAI deployment of `gpt-realtime-mini`, using a GA version offered by your subscription. Use the deployment name `soloai-voice`. Sweden Central is a supported starting region; check availability and quota before creating the deployment. Region choice alone is not a promise of regional inference residency.
+## Operator setup
 
-Deploy a realtime model, not a registered Foundry agent or a chat-completions deployment. Keep the existing `gpt-4.1-mini` deployment for chat and email.
+Use an Azure realtime deployment. Keep the existing chat/email deployment separate. Set these environment variables on the SoloAI server, using a private file outside Git or your secret manager:
 
-The operator supplies the Azure resource endpoint, deployment name and a server-side credential. LiveKit's current Azure realtime integration uses the GA API. Do not copy the preview API version from the email connection into the voice settings.
+```bash
+export SOLOAI_VOICE_AZURE_ENDPOINT=https://your-resource.cognitiveservices.azure.com
+export SOLOAI_VOICE_AZURE_DEPLOYMENT=gpt-realtime-2.1-mini
+# Load SOLOAI_VOICE_AZURE_API_KEY from your private environment file.
+export SOLOAI_VOICE_DAILY_SECONDS=600
+```
 
-References: [Azure realtime support](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-sip), [LiveKit Azure adapter](https://docs.livekit.io/agents/models/realtime/azure-openai/).
+The endpoint is the resource root, without `/openai/v1/realtime` or a query string. The deployment name must match your Azure deployment. Restart SoloAI after changing environment variables. Never put the key in a browser form or commit it.
 
-## LiveKit
+For local development, `SOLOAI_INIT_SCHEMA=true` creates the voice tables at startup. Existing installations with automatic schema creation disabled must run the application's `init_db()` using their normal deployment environment before enabling this feature. Back up the database first. The voice preview supports SQLite locally and PostgreSQL. It does not support SQL Server yet.
 
-Start with one LiveKit Cloud project for SoloAI. Its Build plan is listed at $0 per month with limited allowances. Azure inference is billed separately when using our own Azure deployment. Telephone availability and allowances depend on the plan and country.
+Set `PUBLIC_ORIGIN` to the exact browser origin, including the local port. Production needs HTTPS and a proxy that supports WebSocket upgrades and connections lasting at least the configured call duration. Browsers require a secure context for microphone access; localhost is permitted for local tests.
 
-The LiveKit Agents framework is open source. Self-hosting still requires servers, networking and someone to operate them. We will use Cloud for the pilot to keep the initial operational work small. Check the [current pricing](https://livekit.com/pricing) before enabling paid usage.
-
-The operator needs the LiveKit project URL, API key and API secret. These stay on the server. A customer receives only a short-lived token for their own call room.
-
-## Proposed call flow
+## Request flow
 
 ```mermaid
 flowchart LR
-    A[Customer browser] -->|1. Request test call| B[SoloAI API]
-    B -->|2. Check workspace and allowance| C[(Tenant configuration)]
-    B -->|3. Create isolated room and dispatch| D[LiveKit Cloud]
-    A <-->|4. Audio| D
-    D <--> E[Voice worker]
-    E <-->|5. Speech conversation| F[Shared Azure realtime deployment]
-    E -->|6. Allowed business lookup| G[SoloAI tools]
+    A[Customer browser] -->|1. Save business settings| B[SoloAI API]
+    B -->|2. Store workspace configuration| C[(SQLite or PostgreSQL)]
+    A <-->|3. Authenticated audio connection| B
+    B -->|4. Check session and call allowance| C
+    B <-->|5. Separate conversation per call| D[Shared Azure realtime model]
+    B -->|6. Save status and reported token usage| C
 ```
 
-Each call needs a separate room, conversation and server-derived workspace identity. Room metadata and caller speech must not grant access to a workspace. The worker must load configuration from SoloAI and reject calls it cannot authenticate.
+Audio passes through SoloAI to Azure. The browser receives audio, not the Azure key. The server supplies instructions and accepts audio bytes only, so a caller cannot submit arbitrary session settings or tools through this endpoint. There are no database tools attached to the model.
 
-Before launch we need tests for cross-workspace access, expired tokens, concurrent calls, interruptions, model errors, worker disconnects and usage limits. The existing email tests do not cover these voice behaviors.
+## Limits and privacy
 
-## Current status
+- One active call per workspace, with a maximum length of three minutes.
+- Ten minutes reserved per workspace per UTC day by default. The full selected duration counts when a call starts, including failed or short calls.
+- The server checks session expiry, logout and stop controls during a call.
+- Configuration changes use revision checks to prevent overwriting newer settings.
+- SoloAI stores settings and operational call metadata, including reported token totals. It does not persist call audio or transcripts. Azure processes the audio under your Azure service terms.
+- Voice has its own duration allowance. It is not deducted from the existing email/chat token budget. The allowance limits usage, but is not a currency spending cap.
 
-The branch and deployment plan are prepared. Azure voice credentials and a LiveKit project are still needed for live testing. No voice worker, phone number or cloud infrastructure has been deployed by this change.
+This is a pilot, not a production telephone service. The audio relay adds a server hop and holds a connection per call. Before a wider rollout, measure concurrent calls, reconnect behavior, audio quality, provider throttling and regional latency. LiveKit or a direct WebRTC design can be evaluated when those requirements are known.
+
+## Troubleshooting
+
+| Problem | Check |
+|---|---|
+| Voice is not connected | Confirm all three Azure variables are present on the running server. Restart after changes. |
+| Call fails immediately | Check the deployment name, Azure access and exact `PUBLIC_ORIGIN`. Never paste keys into logs. |
+| Microphone blocked | Allow microphone access for SoloAI in browser settings. Use localhost or HTTPS. |
+| No Enable button after testing | End the call and reopen the voice page. A completed model response is required for the saved revision. |
+| Workspace already has a call | End the other call. A stale reservation expires after its maximum duration plus fifteen seconds. |
+| Daily allowance reached | Wait until the next UTC day or ask the operator to review the allowance. |
+
+## Verification
+
+Automated tests cover workspace isolation, configuration revisions, model selection, enabling checks, origin checks, concurrent-call reservations and daily limits. A live smoke test against the configured Azure deployment returned audio through the SoloAI endpoint. Physical microphone quality and telephone handling are separate checks; telephone handling is not implemented.
+
+API reference: [Azure realtime audio over WebSockets](https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/realtime-audio-websockets).

@@ -54,3 +54,5 @@ select{font:inherit;padding:11px;border:1px solid #d6deeb;border-radius:8px;colo
 .nav .agent-nav button{font-size:13px;padding:10px 12px;width:100%;text-align:left}
 .nav .agent-nav .inbox-nav-link{margin-left:14px;width:calc(100% - 14px);font-size:12px}
 @media(max-width:640px){.nav .agent-nav{min-width:170px;margin-bottom:0;flex-shrink:0}}
+
+.voice-layout{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(280px,.8fr);gap:24px;align-items:start}.voice-layout textarea{width:100%;resize:vertical}.voice-layout .form{max-width:none}.voice-layout details{margin:20px 0}.voice-layout summary{cursor:pointer;font-weight:600}.voice-preview{position:sticky;top:24px}.voice-preview [role=status]{padding:24px;background:#f0f3ff;border-radius:12px;min-height:80px}@media(max-width:900px){.voice-layout{grid-template-columns:1fr}.voice-preview{position:static}}
