@@ -52,6 +52,12 @@ flowchart LR
 
 Audio passes through SoloAI to Azure. The browser receives audio, not the Azure key. The server supplies instructions and accepts audio bytes only, so a caller cannot submit arbitrary session settings or tools through this endpoint. There are no database tools attached to the model.
 
+## Conversation and actions
+
+The receptionist introduces itself once at the start of a call. Later turns use the same Azure conversation, so follow-up questions can refer to details already discussed. Business instructions can describe tone and rules, but cannot create new capabilities. A warm conversational style should never imply that the assistant is a person.
+
+Action tools are not connected in this preview. A future action must have a server-side implementation, workspace permission, validated inputs and a confirmed outcome before the receptionist reports success. Writing “make a booking” in the instructions does not enable booking access.
+
 ## Limits and privacy
 
 - One active call per workspace, with a maximum length of three minutes.
