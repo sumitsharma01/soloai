@@ -56,3 +56,12 @@ def test_setting_changes_clear_test_and_enabled_state(voice):
     assert s.a.post('/api/voice/enable',json={'enabled':True,'revision':1}).status_code==200
     assert s.a.put('/api/voice',json=config|{'revision':1,'company':'New name'}).status_code==200
     state=s.a.get('/api/voice').json();assert not state['enabled'] and not state['tested']
+
+
+def test_production_server_has_websocket_transport():
+    """TestClient bypasses Uvicorn; verify the actual server can accept upgrades."""
+    from uvicorn import Config
+    from uvicorn.protocols.websockets.wsproto_impl import WSProtocol
+    config = Config('app.main:app', ws='wsproto')
+    config.load()
+    assert config.ws_protocol_class is WSProtocol

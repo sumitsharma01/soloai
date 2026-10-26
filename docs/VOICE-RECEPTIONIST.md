@@ -68,6 +68,7 @@ This is a pilot, not a production telephone service. The audio relay adds a serv
 | Problem | Check |
 |---|---|
 | Voice is not connected | Confirm all three Azure variables are present on the running server. Restart after changes. |
+| Browser says Could not connect; server logs Unsupported upgrade request | Reinstall `requirements.txt` and restart SoloAI. Browser calls require the pinned `wsproto` dependency. In-process API tests do not verify the network upgrade. |
 | Call fails immediately | Check the deployment name, Azure access and exact `PUBLIC_ORIGIN`. Never paste keys into logs. |
 | Microphone blocked | Allow microphone access for SoloAI in browser settings. Use localhost or HTTPS. |
 | No Enable button after testing | End the call and reopen the voice page. A completed model response is required for the saved revision. |
