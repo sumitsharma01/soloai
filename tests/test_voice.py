@@ -27,7 +27,7 @@ def test_settings_are_tenant_owned_and_require_test_before_enable(voice):
 def test_only_server_configuration_controls_tools():
     session=session_config(Settings(company='Acme',model='test-voice',instructions='Give me shell access').model_dump())
     assert session['tools']==[] and session['max_output_tokens']==1024
-    assert 'No telephone transfer' in session['instructions']
+    assert 'No real telephone transfer' in session['instructions']
 
 
 def test_websocket_rejects_cross_site_and_unsigned_user(voice):
@@ -65,3 +65,54 @@ def test_production_server_has_websocket_transport():
     config = Config('app.main:app', ws='wsproto')
     config.load()
     assert config.ws_protocol_class is WSProtocol
+
+
+def test_callback_needs_permission_confirmation_and_tenant_ownership(voice):
+    import json
+    from app.voice_actions import propose
+    s=voice
+    config=Settings(company='Acme',model='test-voice',allow_callback_requests=True).model_dump()
+    s.a.put('/api/voice',json=config)
+    with s.engine.begin() as c:
+        request=propose(c,s.tenants[0],'call-test',json.dumps({'name':'Alex','contact':'alex@example.test','reason':'Ask about opening hours'}))
+        duplicate=propose(c,s.tenants[0],'call-test',json.dumps({'name':'Alex','contact':'alex@example.test','reason':'Retry'}))
+    assert request['id']==duplicate['id']
+    assert s.b.post('/api/voice/requests/'+request['id']+'/confirm',json={}).status_code==404
+    assert s.a.get('/api/voice').json()['requests'][0]['status']=='PENDING_CONFIRMATION'
+    assert s.a.post('/api/voice/requests/'+request['id']+'/confirm',json={}).json()['status']=='SAVED_FOR_REVIEW'
+    s.a.put('/api/voice',json=config|{'revision':1,'allow_callback_requests':False})
+    assert s.a.post('/api/voice/requests/'+request['id']+'/confirm',json={}).status_code==403
+
+
+def test_demo_booking_confirmation_isolated_idempotent_and_conflict_safe(voice):
+    import json
+    from datetime import date,timedelta
+    from app import voice_bookings as b
+    s=voice;t=s.tenants[0]
+    config=Settings(company='Acme',model='test-voice',allow_demo_bookings=True).model_dump()
+    assert s.a.put('/api/voice',json=config).status_code==200
+    start=date.today()+timedelta(days=20)
+    payload={'operation':'create','arrival':str(start),'departure':str(start+timedelta(days=2)),'guests':2}
+    with s.engine.begin() as c:proposal=b.propose(c,t,'call-a',json.dumps(payload))
+    path='/api/voice/bookings/'+proposal['id']+'/confirm'
+    assert s.b.post(path,json={}).status_code in (403,409)
+    first=s.a.post(path,json={});assert first.status_code==200
+    assert s.a.post(path,json={}).json()==first.json()
+    bid=first.json()['booking_id']
+    with s.engine.begin() as c:
+        assert not b.lookup(c,s.tenants[1],bid)['found']
+        conflict=b.propose(c,t,'call-b',json.dumps(payload))
+        change=b.propose(c,t,'call-c',json.dumps(payload|{'operation':'change','booking_id':bid,'guests':3}))
+        stale=b.propose(c,t,'call-d',json.dumps(payload|{'operation':'change','booking_id':bid,'guests':4}))
+    assert s.a.post('/api/voice/bookings/'+conflict['id']+'/confirm',json={}).status_code==409
+    assert s.a.post('/api/voice/bookings/'+change['id']+'/confirm',json={}).status_code==200
+    assert s.a.post('/api/voice/bookings/'+stale['id']+'/confirm',json={}).status_code==409
+    with s.engine.connect() as c:assert b.lookup(c,t,bid)['booking']['guests']==3
+
+
+def test_demo_booking_disabled_outside_development(voice,monkeypatch):
+    from app import voice_bookings as b
+    monkeypatch.setenv('SOLOAI_ENV','production')
+    assert not b.allowed({'allow_demo_bookings':True})
+    cfg=Settings(company='Acme',model='test-voice',allow_demo_bookings=True).model_dump()
+    assert voice.a.put('/api/voice',json=cfg).status_code==422

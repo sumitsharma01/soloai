@@ -16,7 +16,7 @@ We are starting with customer support. Website Chat answers questions using your
 
 Configure a receptionist and try a microphone conversation from SoloAI. Enter your business information, instructions and greeting, then choose the configured Azure model and a voice. No customer Azure account or LiveKit setup is required.
 
-This preview supports browser conversations. It does not connect a telephone number, transfer calls, save messages or change bookings. Azure audio usage is billed separately. See the [voice setup guide](docs/VOICE-RECEPTIONIST.md) for operator configuration and limits.
+This preview supports browser conversations. It can prepare callback requests for confirmation and, in local development, demonstrate booking lookups and confirmed changes using synthetic records. It does not connect a telephone number, transfer calls or change real bookings. Azure audio usage is billed separately. See the [voice setup guide](docs/VOICE-RECEPTIONIST.md) for operator configuration and limits.
 
 ## Try it on your computer
 

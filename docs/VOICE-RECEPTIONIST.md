@@ -19,7 +19,7 @@ Advanced settings contain language, maximum test length and whether callers can 
 
 ## What works today
 
-The receptionist can greet callers, answer from supplied business information and explain how to contact the team. It has no tools for transfers, bookings, orders, payments or saving messages. The server explicitly tells it not to claim those actions. These instructions reduce misleading responses, but do not guarantee that every spoken answer is correct. Test your business scenarios before relying on the answers.
+The receptionist can greet callers, answer from supplied business information and explain how to contact the team. It can prepare callback requests for confirmation. In development mode it can also look up and propose changes to synthetic bookings. It has no tools for real transfers, reservations, orders or payments. The server explicitly tells it not to claim those actions. These instructions reduce misleading responses, but do not guarantee that every spoken answer is correct. Test your business scenarios before relying on the answers.
 
 ## Operator setup
 
@@ -56,7 +56,21 @@ Audio passes through SoloAI to Azure. The browser receives audio, not the Azure 
 
 The receptionist introduces itself once at the start of a call. Later turns use the same Azure conversation, so follow-up questions can refer to details already discussed. Business instructions can describe tone and rules, but cannot create new capabilities. A warm conversational style should never imply that the assistant is a person.
 
-Action tools are not connected in this preview. A future action must have a server-side implementation, workspace permission, validated inputs and a confirmed outcome before the receptionist reports success. Writing “make a booking” in the instructions does not enable booking access.
+### Actions available in the local demo
+
+![Voice action controls](screenshots/voice-actions.png)
+
+Under **Actions**, enable callback requests and, if needed, the synthetic booking demo. Save the settings before starting a new call.
+
+- **Callback request:** give a name, contact method and reason. The agent prepares a request; click **Confirm callback request** to save it for staff review. No email is sent and no callback is scheduled. These fields expire after twenty-four hours. Expired records are removed on the next voice-page visit, so physical deletion can occur later.
+- **Booking lookup:** ask for a booking reference shown in the Synthetic bookings panel. The server restricts the lookup to your workspace's demo customer. A spoken name or reference is not identity verification.
+- **Create or change a booking:** give exact future dates and a guest count. Review the proposal in SoloAI, then click **Confirm demo booking**. This writes only to the separate synthetic booking tables. The agent can check the proposal status when you tell it you confirmed.
+
+Start by creating a synthetic booking, then use its reference for lookup and change tests. Each workspace has one demo accommodation, with up to eight guests and stays of one to thirty nights. Confirmed stays cannot overlap. Proposals expire after fifteen minutes; duplicate confirmations return the existing result. A change is rejected if someone has changed the booking since the proposal was created.
+
+The signed-in workspace session acts as the verified demo customer. This is a demonstration identity boundary, not a production caller verification flow. Real bookings still need a write-capable connector and a customer authentication mechanism. The demo tools are unavailable outside `SOLOAI_ENV=development` and never call the existing Supabase or MCP connector.
+
+The server rechecks permissions before preparing an action and before confirming it. Each call allows at most eight tool calls. The model cannot directly confirm a write. Booking demo records remain in the local database; do not put real customer data in them.
 
 ## Limits and privacy
 
@@ -64,7 +78,7 @@ Action tools are not connected in this preview. A future action must have a serv
 - Ten minutes reserved per workspace per UTC day by default. The full selected duration counts when a call starts, including failed or short calls.
 - The server checks session expiry, logout and stop controls during a call.
 - Configuration changes use revision checks to prevent overwriting newer settings.
-- SoloAI stores settings and operational call metadata, including reported token totals. It does not persist call audio or transcripts. Azure processes the audio under your Azure service terms.
+- SoloAI stores settings and operational call metadata, including reported token totals. It does not persist call audio or transcripts. Callback details and synthetic booking records are stored separately when you enable those actions. Azure processes the audio under your Azure service terms.
 - Voice has its own duration allowance. It is not deducted from the existing email/chat token budget. The allowance limits usage, but is not a currency spending cap.
 
 This is a pilot, not a production telephone service. The audio relay adds a server hop and holds a connection per call. Before a wider rollout, measure concurrent calls, reconnect behavior, audio quality, provider throttling and regional latency. LiveKit or a direct WebRTC design can be evaluated when those requirements are known.
