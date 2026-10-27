@@ -3,11 +3,16 @@ function mountEmailReview(state) {
   if (!state.email_workflows) return;
   const nav = document.querySelector('[data-agent-group="email-support"]');
   if (!nav) return;
-  const button = document.createElement('button');
-  button.textContent = 'Support Inbox';
-  button.className = 'inbox-nav-link';
-  button.onclick = showEmailReview;
-  nav.append(button);
+  const parent=nav.querySelector('.agent-nav-link');
+  parent.textContent='▸ Email Support';parent.setAttribute('aria-expanded','false');parent.setAttribute('aria-controls','email-nav-children');
+  const children=document.createElement('div');children.id='email-nav-children';children.hidden=true;
+  children.innerHTML='<button data-email-page="overview">Overview</button><button class="inbox-nav-link" data-email-page="inbox">Support Inbox</button><button data-email-page="configuration">Configuration</button>';
+  nav.append(children);
+  parent.onclick=()=>{if(children.hidden)showEmailOverview();else{children.hidden=true;parent.setAttribute('aria-expanded','false');parent.textContent='▸ Email Support';}};
+  children.querySelector('[data-email-page="overview"]').onclick=showEmailOverview;
+  children.querySelector('[data-email-page="inbox"]').onclick=showEmailReview;
+  children.querySelector('[data-email-page="configuration"]').onclick=()=>{selected='email-support';view='detail';render();activateEmailPage('configuration');};
+  if(view==='detail'&&selected==='email-support')activateEmailPage('configuration');
   // Existing transient /api/try remains available. Explain the explicitly enabled
   // durable inbox separately so legacy privacy badges are not misleading.
   document.querySelectorAll('.chip').forEach(chip => {
@@ -134,4 +139,33 @@ async function showSupabaseSetup() {
     catch (error) { result.textContent = error.message; }
     finally { submit.disabled = false; }
   };
+}
+
+function activateEmailPage(name){
+  if(typeof voiceCleanup==='function')voiceCleanup();
+  document.querySelector('.content')?.classList.remove('inbox-mode');
+  const tree=document.querySelector('#email-nav-children');if(tree)tree.hidden=false;
+  const parent=document.querySelector('[data-agent-group="email-support"] > button');if(parent){parent.textContent='▾ Email Support';parent.setAttribute('aria-expanded','true');}
+  document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('active');b.removeAttribute('aria-current');});
+  const selected=document.querySelector(`[data-email-page="${name}"]`);if(selected){selected.classList.add('active');selected.setAttribute('aria-current','page');}
+  const notice=document.querySelector('.content > .notice');if(notice)notice.hidden=true;
+}
+async function showEmailOverview(){
+  activateEmailPage('overview');
+  const page=document.querySelector('#page');page.innerHTML='<section class="panel" role="status">Loading email overview…</section>';
+  document.querySelector('.main header span').textContent='My agents / Email Support / Overview';
+  document.querySelector('.heading h1').textContent='Email Support';document.querySelector('.heading p').textContent='Inbox workload, review progress and delivery outcomes.';
+  try{
+    const o=await api('inbox/overview');if(!page.isConnected||document.querySelector('[aria-current="page"]')?.dataset.emailPage!=='overview')return;
+    const n=v=>Number(v||0).toLocaleString(),s=o.statuses,d=o.deliveries,total=Object.values(s).reduce((a,b)=>a+b,0);
+    const metric=(label,value,detail)=>`<div class="stat"><small>${label}</small><strong>${value}</strong><footer>${detail}</footer></div>`;
+    const max=Math.max(1,...o.daily.map(x=>x.received));
+    page.innerHTML=`<section class="panel voice-overview-header"><div><span class="chip">Email operations</span><h2>Email Support</h2><p>Agent ID <code>${esc(o.agent_id)}</code></p><p>Automatic sending <strong>${o.automatic?'On':'Off'}</strong> · Daily automatic limit ${n(o.daily_limit)}</p></div><div class="actions"><button id="email-overview-refresh">Refresh</button><button class="primary" id="email-overview-inbox">Open Support Inbox →</button></div></section>
+    <div class="stats voice-stats">${metric('Emails received',n(total),'All retained queued email records')}${metric('Awaiting review',n(s.WAITING_FOR_REVIEW),`${n(o.needs_human)} flagged for human assistance`)}${metric('In progress',n((s.QUEUED||0)+(s.RUNNING||0)),`${n(s.QUEUED)} queued · ${n(s.RUNNING)} running`)}${metric('Replies sent',n(d.SENT),`${n(o.auto_sent)} automatically sent`)}</div>
+    <div class="voice-overview-grid"><section class="panel"><h2>Email volume</h2><p>New queued emails by UTC date, last seven days. Manual draft tests are excluded.</p><div class="voice-chart" role="img" aria-label="Queued emails by day">${o.daily.map(x=>`<div class="voice-bar-column"><span>${x.received}</span><div class="voice-bar-track"><div class="voice-bar" style="height:${x.received/max*100}%"></div></div><small>${esc(x.date.slice(5))}</small></div>`).join('')}</div><details><summary>View daily counts</summary><table class="voice-data"><thead><tr><th>Date (UTC)</th><th>Emails</th></tr></thead><tbody>${o.daily.map(x=>`<tr><td>${esc(x.date)}</td><td>${n(x.received)}</td></tr>`).join('')}</tbody></table></details></section>
+    <section class="panel"><h2>Review and delivery</h2><div class="check">Human assistance required <b>${n(o.needs_human)}</b></div><div class="check">Processing failures <b>${n(s.FAILED)}</b></div><div class="check">Delivery failures <b>${n(d.FAILED)}</b></div><div class="check">Uncertain delivery <b>${n(d.UNKNOWN)}</b></div><p>Check uncertain deliveries in the mailbox before retrying. A prepared or approved draft is not a sent reply.</p><div class="check">Rejected drafts <b>${n(s.REJECTED)}</b></div></section>
+    <section class="panel"><h2>Model usage</h2><div class="check">Accounted tokens <b>${n(o.usage.tokens)}</b></div><div class="check">Finished processing records <b>${n(o.usage.samples)}</b></div><div class="check">Average execution latency <b>${o.usage.latency===null?'No samples':n(Math.round(o.usage.latency))+' ms'}</b></div><p>Based on finished queued executions, including failed attempts. Token accounting can include conservative reservations after uncertain outcomes. Latency runs from queue arrival to processing completion, including queue time and retries. It is not time to customer delivery. P95 and reply-quality scores are not shown here.</p></section>
+    <section class="panel"><h2>Sending controls</h2><div class="check">Gmail sending permission <b>${o.send_authorized.gmail?'Authorized':'Not authorized'}</b></div><div class="check">Outlook sending permission <b>${o.send_authorized.outlook?'Authorized':'Not authorized'}</b></div><p>Authorization does not prove mailbox connectivity. Sending also depends on the agent permissions, automation rules and review decisions.</p><button id="email-overview-health">View connector health</button></section></div><p class="muted">Counts cover retained workspace records. Updated ${esc(new Date(o.updated*1000).toLocaleString())}. Refresh for a new snapshot.</p>`;
+    document.querySelector('#email-overview-refresh').onclick=showEmailOverview;document.querySelector('#email-overview-inbox').onclick=showEmailReview;document.querySelector('#email-overview-health').onclick=showSupportHealth;
+  }catch(e){page.textContent=e.message;}
 }

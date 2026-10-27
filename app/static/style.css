@@ -76,3 +76,7 @@ select{font:inherit;padding:11px;border:1px solid #d6deeb;border-radius:8px;colo
 .voice-overview-grid .check{gap:15px;flex-wrap:wrap}
 @media(max-width:900px){.voice-overview-grid{grid-template-columns:1fr}.voice-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:480px){.voice-stats{grid-template-columns:1fr}}
+
+.nav #email-nav-children{margin-left:12px;padding-left:8px;border-left:1px solid #384764}
+.nav #email-nav-children[hidden]{display:none}
+.nav #email-nav-children button{font-size:12px;margin-left:0;width:100%}
