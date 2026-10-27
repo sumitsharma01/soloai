@@ -116,3 +116,16 @@ def test_demo_booking_disabled_outside_development(voice,monkeypatch):
     assert not b.allowed({'allow_demo_bookings':True})
     cfg=Settings(company='Acme',model='test-voice',allow_demo_bookings=True).model_dump()
     assert voice.a.put('/api/voice',json=cfg).status_code==422
+
+
+def test_overview_is_tenant_scoped_and_ignores_expired_active_calls(voice):
+    s=voice;now=int(time.time())
+    with s.engine.begin() as c:
+        for rid,tenant,status,tokens,expiry in [('one',s.tenants[0],'COMPLETED',200,now-10),('two',s.tenants[0],'ACTIVE',0,now+60),('expired',s.tenants[0],'ACTIVE',0,now-1),('other',s.tenants[1],'COMPLETED',900,now-10)]:
+            c.execute(text('INSERT INTO voice_calls (id,tenant,revision,created,expires,status,reserved_seconds,tokens) VALUES (:id,:t,1,:now,:end,:s,30,:tokens)'),{'id':rid,'t':tenant,'now':now,'end':expiry,'s':status,'tokens':tokens})
+    a=s.a.get('/api/voice/overview').json();b=s.b.get('/api/voice/overview').json()
+    assert a['counts']['total']==3 and a['counts']['active']==1
+    assert a['counts']['tokens']==200 and a['average_tokens']==200
+    assert sum(d['sessions'] for d in a['daily'])==3
+    assert b['counts']['tokens']==900
+    assert a['agent_id']!=b['agent_id']

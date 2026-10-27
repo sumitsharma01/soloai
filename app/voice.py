@@ -126,6 +126,22 @@ def router(get_engine, tenant, audit):
             'enabled':bool(row and row['enabled']),'tested':bool(row and row['tested']==row['revision']),
             'calls':calls,'daily_seconds':int(os.getenv('SOLOAI_VOICE_DAILY_SECONDS','600'))}
 
+    @routes.get('/overview')
+    def overview(t=Depends(tenant)):
+        now=int(time.time())
+        with transaction(t) as c:
+            counts=dict(c.execute(text("SELECT COUNT(*) AS total, COALESCE(SUM(CASE WHEN status='ACTIVE' AND expires>:now THEN 1 ELSE 0 END),0) AS active, COALESCE(SUM(CASE WHEN status='COMPLETED' THEN 1 ELSE 0 END),0) AS completed, COALESCE(SUM(CASE WHEN status='FAILED' THEN 1 ELSE 0 END),0) AS failed, COALESCE(SUM(CASE WHEN status!='ACTIVE' THEN tokens ELSE 0 END),0) AS tokens, COALESCE(SUM(CASE WHEN status!='ACTIVE' THEN 1 ELSE 0 END),0) AS ended FROM voice_calls WHERE tenant=:t"),{'t':t,'now':now}).mappings().one())
+            trend=[dict(r) for r in c.execute(text('SELECT created,status,tokens FROM voice_calls WHERE tenant=:t AND created>=:since ORDER BY created'),{'t':t,'since':now-7*86400}).mappings()]
+        buckets=[{'date':time.strftime('%Y-%m-%d',time.gmtime((now//86400-i)*86400)),'sessions':0,'tokens':0} for i in range(6,-1,-1)]
+        for call in trend:
+            day=time.strftime('%Y-%m-%d',time.gmtime(call['created']))
+            for bucket in buckets:
+                if bucket['date']==day:bucket['sessions']+=1;bucket['tokens']+=call['tokens'];break
+        return {'agent_id':'voice-'+hashlib.sha256(t.encode()).hexdigest()[:16], 'name':'Voice Receptionist',
+                'region':os.getenv('SOLOAI_VOICE_AZURE_REGION') or None,'model':os.getenv('SOLOAI_VOICE_AZURE_DEPLOYMENT') or None,
+                'counts':counts,'average_tokens':round(counts['tokens']/counts['ended'],1) if counts['ended'] else None,
+                'daily':buckets,'updated':now}
+
     @routes.put('')
     def save(body:Settings,t=Depends(tenant)):
         if body.allow_demo_bookings and os.getenv('SOLOAI_ENV')!='development':raise HTTPException(422,'Synthetic bookings are available only in development.')

@@ -4,6 +4,18 @@ Voice Receptionist is a browser-call preview. Customers configure it in SoloAI; 
 
 ![Voice Receptionist setup in SoloAI](screenshots/voice-receptionist.png)
 
+## Overview
+
+Click Voice Receptionist in the left navigation to expand **Overview** and **Configuration & test**. The Agent store card uses the same layout as the other agents, with a microphone icon.
+
+Overview shows a stable workspace-specific agent ID, the configured model and region, active sessions, all recorded attempts, completed sessions, reported tokens and daily activity for the last seven UTC dates. Totals cover all retained call records. Average tokens use ended sessions and include reported audio and text tokens. Failed responses can have missing usage, so this is not a billing reconciliation report.
+
+Use Refresh for a new snapshot. Active sessions exclude expired reservations. Completed status means a response completed and the call ended normally, not that a business task succeeded. Conversation turns, interruptions, latency percentiles, uptime and load are labelled as unmeasured until their instrumentation exists. Telephone calls are not connected.
+
+The optional operator variable `SOLOAI_VOICE_AZURE_REGION` supplies the region label. It is not inferred from the endpoint or a guarantee about inference residency.
+
+![Voice overview and navigation](screenshots/voice-overview.png)
+
 ## Set up your receptionist
 
 1. Open **My agents → Voice Receptionist · Preview** or select it in the Agent store.

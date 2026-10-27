@@ -1,15 +1,49 @@
 /* Voice settings and browser tests. No provider keys are accepted in the browser. */
 let voiceCleanup=null;
 function mountVoice(){
-  const nav=document.createElement('button');nav.textContent='Voice Receptionist · Preview';nav.onclick=showVoice;
-  document.querySelector('.agent-nav')?.append(nav);
+  const group=document.createElement('div');group.className='voice-nav-group';
+  group.innerHTML='<button class="agent-nav-link" id="voice-nav-toggle" aria-expanded="false" aria-controls="voice-nav-children">▸ Voice Receptionist</button><div id="voice-nav-children" hidden><button data-voice-page="overview">Overview</button><button data-voice-page="configuration">Configuration & test</button></div>';
+  document.querySelector('.agent-nav')?.append(group);
+  group.querySelector('#voice-nav-toggle').onclick=()=>{const expanded=group.querySelector('#voice-nav-children').hidden;if(expanded)showVoiceOverview();else{group.querySelector('#voice-nav-children').hidden=true;group.querySelector('#voice-nav-toggle').setAttribute('aria-expanded','false');group.querySelector('#voice-nav-toggle').textContent='▸ Voice Receptionist';}};
+  group.querySelector('[data-voice-page="overview"]').onclick=showVoiceOverview;
+  group.querySelector('[data-voice-page="configuration"]').onclick=showVoice;
   if(!['agents','marketplace'].includes(view))return;
   const card=document.createElement('article');card.className='card';
-  card.innerHTML='<div class="eyebrow">VOICE · PREVIEW</div><h3>Voice Receptionist</h3><p>A friendly first conversation, using your business information.</p><p>Browser test calls. Telephone calls are not connected yet.</p><button class="primary">Set up receptionist</button>';
-  card.querySelector('button').onclick=showVoice;document.querySelector('#page .agents')?.append(card);
+  const icon='<div class="icon voice-icon" aria-hidden="true"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="2" width="6" height="12" rx="3"/><path d="M5 10v2a7 7 0 0 0 14 0v-2M12 19v3m-4 0h8"/></svg></div>';
+  card.innerHTML=view==='marketplace'?`${icon}<h2>Voice Receptionist</h2><p>A welcoming voice for business questions, callbacks and browser test calls.</p><span class="chip">Preview · Browser calls</span><div class="actions"><button>Configure agent →</button></div>`:`<div class="cardtop">${icon}<div><h3>Voice Receptionist</h3><p>Your conversational front desk</p></div><span class="badge off">Preview</span></div><p>A welcoming voice for business questions and permitted actions.</p><div class="permissions"><span class="chip">Browser calls</span><span class="chip">Confirmed actions</span></div><div class="cardfoot"><span>Telephone calls not connected</span><button>Manage agent →</button></div>`;
+  card.querySelector('button').onclick=showVoiceOverview;document.querySelector('#page .agents')?.append(card);
   if(!card.isConnected)document.querySelector('#page')?.append(card);
 }
+function activateVoicePage(name){
+  document.querySelector('.content')?.classList.remove('inbox-mode');
+  const tree=document.querySelector('#voice-nav-children');if(tree)tree.hidden=false;
+  const toggle=document.querySelector('#voice-nav-toggle');if(toggle){toggle.setAttribute('aria-expanded','true');toggle.textContent='▾ Voice Receptionist';}
+  document.querySelectorAll('.nav button').forEach(b=>{b.classList.remove('active');b.removeAttribute('aria-current');});
+  const selected=document.querySelector(`[data-voice-page="${name}"]`);if(selected){selected.classList.add('active');selected.setAttribute('aria-current','page');}
+  const notice=document.querySelector('.content > .notice');if(notice)notice.hidden=true;
+}
+async function showVoiceOverview(){
+  if(voiceCleanup)voiceCleanup();activateVoicePage('overview');
+  const page=document.querySelector('#page');page.innerHTML='<section class="panel" role="status">Loading voice overview…</section>';
+  document.querySelector('.main header span').textContent='My agents / Voice Receptionist / Overview';
+  document.querySelector('.heading h1').textContent='Voice Receptionist';
+  document.querySelector('.heading p').textContent='Your sessions, model usage and service health in one place.';
+  try{
+    const o=await api('voice/overview');if(!page.isConnected||document.querySelector('[aria-current="page"]')?.dataset.voicePage!=='overview')return;
+    const number=n=>Number(n).toLocaleString(),metric=(label,value,detail)=>`<div class="stat"><small>${label}</small><strong>${value}</strong><footer>${detail}</footer></div>`;
+    const max=Math.max(1,...o.daily.map(d=>d.sessions));
+    page.innerHTML=`<section class="panel voice-overview-header"><div><span class="chip">Browser preview</span><h2>${esc(o.name)}</h2><p>Agent ID <code>${esc(o.agent_id)}</code></p><p>Model <strong>${esc(o.model||'Not configured')}</strong> · Azure region <strong>${esc(o.region||'Not configured')}</strong></p></div><div class="actions"><button id="voice-overview-refresh">Refresh</button><button class="primary" id="voice-overview-configure">Configure & test →</button></div></section>
+      <div class="stats voice-stats">${metric('Concurrent sessions',number(o.counts.active),'Active reservations that have not expired')}${metric('Total sessions',number(o.counts.total),'All recorded attempts in this workspace')}${metric('Completed sessions',number(o.counts.completed),'Completed status, not a task-success score')}${metric('Avg model tokens / session',o.average_tokens===null?'No sessions':number(o.average_tokens),'Ended sessions; includes reported audio and text tokens')}</div>
+      <div class="voice-overview-grid"><section class="panel"><h2>Sessions served</h2><p>Last seven UTC calendar days · ${number(o.daily.reduce((a,d)=>a+d.sessions,0))} session starts</p><div class="voice-chart" role="img" aria-label="Daily session starts over the last seven days">${o.daily.map(d=>`<div class="voice-bar-column"><span>${d.sessions}</span><div class="voice-bar-track"><div class="voice-bar" style="height:${d.sessions/max*100}%"></div></div><small>${esc(d.date.slice(5))}</small></div>`).join('')}</div><details><summary>View daily data</summary><table class="voice-data"><thead><tr><th>Date (UTC)</th><th>Sessions</th><th>Reported tokens</th></tr></thead><tbody>${o.daily.map(d=>`<tr><td>${esc(d.date)}</td><td>${number(d.sessions)}</td><td>${number(d.tokens)}</td></tr>`).join('')}</tbody></table></details></section>
+      <section class="panel"><h2>Model performance</h2><div class="check">Reported tokens, ended sessions <b>${number(o.counts.tokens)}</b></div><div class="check">Failed sessions <b>${number(o.counts.failed)}</b></div><p>Usage comes from Azure response events. Missing provider usage is not estimated. These are combined model tokens, not a text-only LLM count.</p><h3>Conversation flow</h3><div class="check">Turns <b>Not instrumented</b></div><div class="check">Interruption rate <b>Not instrumented</b></div><p>A disconnected call is not counted as a conversational interruption.</p></section>
+      <section class="panel"><h2>Reply latency</h2><p>Response latency over time, stage breakdowns and P95/P99 are not measured yet. No timing estimates are shown.</p><div class="voice-empty">Waiting for turn-level timing instrumentation</div></section>
+      <section class="panel"><h2>Deployment health</h2><div class="check">Connection latency / agent join <b>Not measured</b></div><div class="check">Inbound telephone calls <b>Not connected</b></div><div class="check">Agent uptime / average load <b>Not measured</b></div><p>Model configuration does not prove endpoint health. This page reports workspace call metadata, not Azure infrastructure availability.</p></section></div><p class="muted">Updated ${esc(new Date(o.updated*1000).toLocaleString())}. Use Refresh for a new snapshot.</p>`;
+    document.querySelector('#voice-overview-refresh').onclick=showVoiceOverview;document.querySelector('#voice-overview-configure').onclick=showVoice;
+  }catch(e){page.textContent=e.message;}
+}
+
 async function showVoice(){
+  activateVoicePage('configuration');
   if(voiceCleanup)voiceCleanup();
   const page=document.querySelector('#page');page.innerHTML='<section class="panel">Loading your receptionist…</section>';
   try{
