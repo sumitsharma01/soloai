@@ -75,7 +75,9 @@ async def lifespan(app):
         if metrics_server:
             metrics_server.shutdown()
             metrics_server.server_close()
-app = FastAPI(title='SoloAI', lifespan=lifespan, docs_url=None if PROD else '/docs', redoc_url=None)
+from app.version import __version__
+
+app = FastAPI(title='SoloAI', version=__version__, lifespan=lifespan, docs_url=None if PROD else '/docs', redoc_url=None)
 
 @app.exception_handler(SQLAlchemyError)
 async def database_failure(request, exc):

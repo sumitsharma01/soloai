@@ -2,6 +2,8 @@
 
 # SoloAI
 
+**Current release: v0.2.0 · Preview** · [Release notes](CHANGELOG.md)
+
 ## One platform. Many agents.
 
 SoloAI gives founders a place to connect their tools and put agents to work. The goal is fewer repetitive tasks, clear permissions and guardrails you can understand without learning how AI infrastructure works.
@@ -14,7 +16,7 @@ We are starting with customer support. Website Chat answers questions using your
 
 ## Custom flows preview
 
-Build a bounded workflow with a manual trigger, AI tasks, an approved internal task tool, conditions, approvals and human handoffs. Test a draft, publish its version, then enable it. Runs and decisions are saved so they can be inspected and resumed. External writes and automatic triggers are not connected yet. See the [workflow builder guide](docs/WORKFLOW-BUILDER.md).
+Create a custom agent from six blocks: manual trigger, AI task, approved tool, condition, approval and human handoff. It appears in My agents with a connected block diagram and a recoverable delete option. Tools can read workspace policies, look up a verified customer booking through the connected Supabase service, or create an internal review task. Conditions can use a text match or an AI assessment of a business rule. Test a draft, publish its version, then enable it. Runs and decisions are saved so they can be inspected and resumed. External writes and automatic triggers are not connected yet. See the [workflow builder guide](docs/WORKFLOW-BUILDER.md).
 
 ## Voice Receptionist preview
 
