@@ -12,6 +12,10 @@ Your application stays where it is, whether that is Vercel, AWS or another host.
 
 We are starting with customer support. Website Chat answers questions using your guidance. Email Support prepares replies for review. We will add more agents as these workflows prove useful and reliable.
 
+## Custom flows preview
+
+Build a bounded workflow with a manual trigger, AI tasks, an approved internal task tool, conditions, approvals and human handoffs. Test a draft, publish its version, then enable it. Runs and decisions are saved so they can be inspected and resumed. External writes and automatic triggers are not connected yet. See the [workflow builder guide](docs/WORKFLOW-BUILDER.md).
+
 ## Voice Receptionist preview
 
 Configure a receptionist and try a microphone conversation from SoloAI. Enter your business information, instructions and greeting, then choose the configured Azure model and a voice. No customer Azure account or LiveKit setup is required.

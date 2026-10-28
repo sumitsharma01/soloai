@@ -15,7 +15,7 @@ if(view==='security'){page.innerHTML=`<div class="lower"><div class="panel"><h2>
 root.querySelectorAll('[data-nav]').forEach(b=>b.onclick=()=>{view=b.dataset.nav;render()});root.querySelectorAll('[data-agent]').forEach(b=>b.onclick=()=>{selected=b.dataset.agent;view='detail';render()});document.querySelector('#logout').onclick=async()=>{await api('logout','POST');login()};const agentNav=document.createElement('div');agentNav.className='agent-nav';agentNav.setAttribute('aria-label','Your agents');
 for(const agent of data.agents){const group=document.createElement('div');group.dataset.agentGroup=agent.id;const link=document.createElement('button');link.textContent=agent.name;link.className='agent-nav-link';link.classList.toggle('active',view==='detail'&&selected===agent.id);link.onclick=()=>{selected=agent.id;view='detail';render()};group.append(link);agentNav.append(group)}
 root.querySelector('.nav [data-nav="agents"]').after(agentNav);
-if(typeof mountEmailReview==='function')mountEmailReview(data);if(typeof mountVoice==='function')mountVoice();}
+if(typeof mountEmailReview==='function')mountEmailReview(data);if(typeof mountVoice==='function')mountVoice();if(typeof mountWorkflows==='function')mountWorkflows();}
 load();
 
 document.addEventListener('click',async event=>{

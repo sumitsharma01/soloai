@@ -50,6 +50,8 @@ def init_db():
         if engine.dialect.name in ("sqlite","postgresql"):
             from app.voice import initialize
             initialize(c)
+            from app.workflows import initialize as initialize_workflows
+            initialize_workflows(c)
 @asynccontextmanager
 async def lifespan(app):
     if os.getenv('SOLOAI_INIT_SCHEMA','true').lower()=='true': init_db()
@@ -353,3 +355,6 @@ app.include_router(outlook_router(lambda: engine, tenant, email_enabled))
 
 from app.voice import router as voice_router
 app.include_router(voice_router(lambda: engine, tenant, audit))
+
+from app.workflows import router as workflows_router
+app.include_router(workflows_router(lambda: engine, tenant, audit))
