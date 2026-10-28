@@ -81,3 +81,7 @@ select{font:inherit;padding:11px;border:1px solid #d6deeb;border-radius:8px;colo
 .nav #email-nav-children[hidden]{display:none}
 .nav #email-nav-children button{font-size:12px;margin-left:0;width:100%}
 .workflow-blocks{max-width:800px;margin:24px auto}.workflow-block{padding:20px;border:1px solid #dce3ec;border-left:4px solid #776bd5;border-radius:12px;background:#fafaff}.workflow-block label{display:block;margin-top:12px}.workflow-block input,.workflow-block textarea{width:100%}.workflow-arrow{text-align:center;color:#8277bd;padding:8px}.workflow-output{color:#243047;white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f6fb;padding:16px;border-radius:10px;font:inherit}#flow-runs button{text-align:left}#flow-name{display:block;width:100%;max-width:600px;margin:12px 0}
+
+.flow-canvas{display:flex;align-items:center;overflow-x:auto;padding:32px 16px;gap:12px;background:radial-gradient(#cdd5e5 1px,transparent 1px);background-size:16px 16px;border:1px solid #dce3ec;border-radius:16px;margin:20px 0}.flow-node{flex:0 0 180px;min-height:96px;background:white;border:2px solid #8277bd;border-radius:12px;text-align:left;padding:16px;box-shadow:0 4px 12px #20284012}.flow-node small,.flow-node strong{display:block}.flow-node small{color:#6459a7;margin-bottom:8px}.flow-edge{color:#8277bd;font-size:24px}
+
+#flow-verified{width:auto;display:inline-block;margin-right:8px}label:has(#flow-verified){display:flex;align-items:center;gap:8px;margin:16px 0}

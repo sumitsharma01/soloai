@@ -10,12 +10,12 @@ SoloAI now has a small native workflow builder. Open **Custom flows · Preview**
 |---|---|
 | Trigger | A signed-in workspace owner starts the run manually. |
 | AI task | Your configured Azure chat model transforms the current text using your instructions. |
-| Approved tool | Creates an internal SoloAI review task. Tests simulate this write. |
-| Condition | Continues if the current text contains the specified phrase, ignoring case. Otherwise stops without running later steps. |
+| Approved tool | Creates an internal review task, or reads up to ten workspace business policies into the current context. Tests simulate task writes; policy reads are real. |
+| Condition | Choose text matching or an AI assessment of a business rule. AI checks continue only for an exact CONTINUE response; uncertain or unexpected answers stop. Keep human approval before consequential actions. |
 | Approval | Waits for an explicit approve or reject decision in SoloAI. |
 | Human handoff | Pauses for staff to review the result and mark the handoff complete or reject it. No external notification is sent. |
 
-The diagram runs top to bottom. Add blocks, edit their labels and move them up to change the order. There are no loops, parallel branches, arbitrary code, SQL, external URLs or model-selected tools. Conditions are simple text checks, not security controls. Only AI tasks replace the text passed to later blocks.
+The diagram runs top to bottom. Add blocks, edit their labels and move them up to change the order. There are no loops, parallel branches, arbitrary code, SQL, external URLs or model-selected tools. Conditions are simple text checks, not security controls. AI tasks replace the current text. Policy reads append reference information. AI conditions preserve the current text.
 
 ## Test, publish and enable
 
@@ -62,3 +62,25 @@ flowchart LR
     F -->|6. Explicit decision| B
     D -->|7. Transactional write| G[(Internal review task)]
 ```
+
+## Custom agents and the visual editor
+
+![Custom-agent block diagram](screenshots/custom-agent-diagram.png)
+
+Saved workflows appear as custom agent cards under My agents. Open one to see a connected block diagram. Select a node to jump to its settings. This is a sequential diagram with editable blocks, not a drag-and-drop graph or arbitrary branching engine.
+
+Options → Delete agent disables the flow and stops active runs. Deleted agents keeps the definition and history so it can be restored. Restoring leaves it disabled; stopped runs stay stopped. This is recoverable deletion, not data erasure.
+
+AI steps receive the workspace business name. Add Read workspace business policies before an AI step to supply approved business context. Policies remain tenant-scoped and are reference data, not permission to execute tools. AI conditions count toward the three-model-call limit.
+
+Connected Gmail, Supabase and MCP services do not automatically grant a custom agent their permissions. This version exposes business-policy reads, verified Supabase booking reads and internal task creation. External writes remain unavailable.
+
+## Read a connected Supabase booking
+
+Connect the restricted booking service in Integrations first. Add an Approved tool block and select **Read verified Supabase booking**. Before each run, enter the booking reference and customer ID, then confirm that you independently verified the customer. A reference supplied in a message is not verification. Only a signed-in workspace operator can start this flow.
+
+The adapter uses the saved workspace connector and encrypted credential. It sends only the booking reference and verified customer ID, accepts a bounded response, checks the returned customer and reference, and checks authorization again after the request. Verification expires after one hour. Reconnecting the service invalidates existing run authorization. Tests perform real reads; they still simulate internal task writes. No booking changes are supported.
+
+Example: Manual trigger → read booking → read business policies → AI task explaining the permitted next step → AI condition checking whether staff review is needed → approval → create review task → human handoff. A false condition stops the sequence; there is no alternate branch yet. Missing bookings are returned as unknown, not evidence of eligibility.
+
+The model assesses content and writes summaries. It does not select unrestricted integrations or invent new tool permissions. This is a bounded workflow with dynamic decisions, not an autonomous cross-service planner.

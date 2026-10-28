@@ -94,3 +94,67 @@ def test_budget_failure_does_not_call_provider(setup,monkeypatch):
     assert response.status_code==429
     rows=s.a.get(f'/api/workflows/{fid}/runs').json()
     assert run(s,rows[0]['id'])['status']=='READY'
+
+
+def test_archive_restore_and_policy_scope(setup):
+    s=setup
+    s.a.post('/api/support/policies',json={'title':'Returns','content':'Returns require staff approval.'})
+    s.b.post('/api/support/policies',json={'title':'Private','content':'Other workspace secret policy.'})
+    fid=create(s,{'name':'Policy agent','blocks':[{'kind':'trigger','label':'Start'},{'kind':'tool','label':'Policies','tool':'read_business_policies'}]})
+    rid=start(s,fid)
+    assert 'Returns require' in run(s,rid)['context']
+    assert 'Other workspace' not in run(s,rid)['context']
+    assert s.b.delete('/api/workflows/'+fid).status_code==404
+    assert s.a.delete('/api/workflows/'+fid).status_code==200
+    assert not s.a.get('/api/workflows').json()['flows']
+    assert s.a.post(f'/api/workflows/{fid}/runs',json={'key':'archived-key','content':'Example'}).status_code==409
+    assert len(s.a.get('/api/workflows/deleted').json())==1
+    assert s.a.post(f'/api/workflows/{fid}/restore').status_code==200
+    assert len(s.a.get('/api/workflows').json()['flows'])==1
+
+
+def test_ai_condition_fails_closed_and_preserves_input(setup,monkeypatch):
+    s=setup
+    body={'name':'Decision','blocks':[{'kind':'trigger','label':'Start'},{'kind':'condition','mode':'ai','label':'Eligible','instruction':'Is this a support request?'},{'kind':'approval','label':'Review'}]}
+    fid=create(s,body)
+    async def yes(*args):return 'CONTINUE',5
+    monkeypatch.setattr(workflows,'model_task',yes)
+    rid=start(s,fid);assert run(s,rid)['status']=='WAITING_APPROVAL'
+    assert run(s,rid)['context']=='Sample request'
+    async def uncertain(*args):return 'Probably yes',5
+    monkeypatch.setattr(workflows,'model_task',uncertain)
+    rid=start(s,fid,'uncertain-key');assert run(s,rid)['status']=='CONDITION_NOT_MET'
+
+
+def test_booking_requires_verified_identity_and_uses_tenant_connector(setup,monkeypatch):
+    import httpx
+    from app import workflow_booking
+    s=setup
+    fid=create(s,{'name':'Booking','blocks':[{'kind':'trigger','label':'Start'},{'kind':'tool','tool':'get_booking','label':'Read booking'}]})
+    payload={'key':'booking-run-1','content':'Check booking','test':True,'booking_id':'DEMO-1','customer_id':'C-1','identity_verified':True}
+    assert s.a.post(f'/api/workflows/{fid}/runs',json=payload).status_code==409
+    with s.engine.begin() as c:c.execute(text("INSERT INTO booking_connections (tenant,url,secret,revision,created) VALUES (:t,'https://example.supabase.co/functions/v1/soloai-booking','encrypted',1,0)"),{'t':s.tenants[0]})
+    assert s.a.post(f'/api/workflows/{fid}/runs',json=payload|{'identity_verified':False}).status_code==422
+    monkeypatch.setattr(workflow_booking,'cipher',lambda:None)
+    monkeypatch.setattr(workflow_booking,'unseal',lambda *args:'test-only-token')
+    original=httpx.AsyncClient
+    def handler(request):
+        assert json.loads(request.content)=={'booking_id':'DEMO-1','customer_id':'C-1'}
+        return httpx.Response(200,json={'customer_id':'C-1','booking_id':'DEMO-1','found':True,'status':'confirmed','change_allowed':False})
+    monkeypatch.setattr(workflow_booking.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(handler),**kwargs))
+    response=s.a.post(f'/api/workflows/{fid}/runs',json=payload);assert response.status_code==200
+    result=run(s,response.json()['id']);assert result['status']=='COMPLETED'
+    assert 'confirmed' in result['context']
+    assert s.b.get('/api/workflows/runs/'+result['id']).status_code==404
+    def wrong_customer(request):
+        return httpx.Response(200,json={'customer_id':'C-OTHER','booking_id':'DEMO-1','found':True,'status':'confirmed','change_allowed':False})
+    monkeypatch.setattr(workflow_booking.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(wrong_customer),**kwargs))
+    response=s.a.post(f'/api/workflows/{fid}/runs',json=payload|{'key':'booking-wrong-customer'})
+    result=run(s,response.json()['id']);assert result['status']=='FAILED'
+    assert 'C-OTHER' not in result['context']
+    def revoked(request):
+        with s.engine.begin() as c:c.execute(text('UPDATE booking_connections SET revision=revision+1 WHERE tenant=:t'),{'t':s.tenants[0]})
+        return handler(request)
+    monkeypatch.setattr(workflow_booking.httpx,'AsyncClient',lambda **kwargs:original(transport=httpx.MockTransport(revoked),**kwargs))
+    response=s.a.post(f'/api/workflows/{fid}/runs',json=payload|{'key':'booking-revoked'})
+    assert run(s,response.json()['id'])['status']=='FAILED'

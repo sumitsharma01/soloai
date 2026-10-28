@@ -16,7 +16,8 @@ class Block(BaseModel):
     kind: Literal['trigger','ai_task','tool','condition','approval','handoff']
     label: str=Field(min_length=1,max_length=80)
     instruction: str=Field(default='',max_length=2000)
-    tool: Literal['create_review_task']='create_review_task'
+    mode: Literal['text','ai']='text'
+    tool: Literal['create_review_task','read_business_policies','get_booking']='create_review_task'
 
 class Definition(BaseModel):
     model_config=ConfigDict(extra='forbid')
@@ -25,7 +26,7 @@ class Definition(BaseModel):
     @model_validator(mode='after')
     def validate_path(self):
         if self.blocks[0].kind!='trigger' or any(b.kind=='trigger' for b in self.blocks[1:]):raise ValueError('Use exactly one manual trigger at the start.')
-        if sum(b.kind=='ai_task' for b in self.blocks)>3:raise ValueError('At most three AI tasks per run.')
+        if sum(b.kind=='ai_task' or (b.kind=='condition' and b.mode=='ai') for b in self.blocks)>3:raise ValueError('At most three AI tasks per run.')
         for b in self.blocks:
             if b.kind in ('ai_task','condition') and not b.instruction.strip():raise ValueError('AI tasks need instructions; conditions need text to match.')
         return self
@@ -37,6 +38,9 @@ class Start(BaseModel):
     key:str=Field(min_length=8,max_length=100,pattern=r'^[a-zA-Z0-9_-]+$')
     content:str=Field(min_length=1,max_length=2000)
     test:bool=True
+    booking_id:str=Field(default='',max_length=80,pattern=r'^[A-Za-z0-9_-]*$')
+    customer_id:str=Field(default='',max_length=100,pattern=r'^[A-Za-z0-9_-]*$')
+    identity_verified:bool=False
 class Decision(BaseModel):
     approved:bool
 class Version(BaseModel):
@@ -53,6 +57,8 @@ TEMPLATE={'name':'Review an incoming request','blocks':[
     {'kind':'handoff','label':'Staff follow-up'}]}
 
 def initialize(c):
+    c.execute(text("CREATE TABLE IF NOT EXISTS workflow_booking_context (run VARCHAR(64) PRIMARY KEY, tenant VARCHAR(64) NOT NULL, booking_id VARCHAR(80) NOT NULL, customer_id VARCHAR(100) NOT NULL, revision INTEGER NOT NULL, expires BIGINT NOT NULL)"))
+    c.execute(text("CREATE TABLE IF NOT EXISTS workflow_archives (flow VARCHAR(64) PRIMARY KEY, tenant VARCHAR(64) NOT NULL)"))
     for ddl in [
         'CREATE TABLE IF NOT EXISTS workflows (id TEXT PRIMARY KEY, tenant TEXT NOT NULL REFERENCES tenants(id), draft TEXT NOT NULL, revision INTEGER NOT NULL, tested INTEGER NOT NULL DEFAULT 0, published INTEGER NOT NULL DEFAULT 0, enabled INTEGER NOT NULL DEFAULT 0)',
         'CREATE TABLE IF NOT EXISTS workflow_versions (flow TEXT NOT NULL REFERENCES workflows(id), version INTEGER NOT NULL, definition TEXT NOT NULL, PRIMARY KEY(flow,version))',
@@ -79,8 +85,8 @@ class Runtime:
         return r
     def check(self,c,t,r):
         epoch=c.execute(text('SELECT stopped FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
-        flow=c.execute(text('SELECT enabled FROM workflows WHERE tenant=:t AND id=:id'),{'t':t,'id':r['flow']}).scalar()
-        if epoch!=r['epoch'] or (not r['test'] and not flow):raise HTTPException(409,'Workflow stopped. Start a new run after enabling it.')
+        flow=c.execute(text('SELECT enabled FROM workflows WHERE tenant=:t AND id=:id AND id NOT IN (SELECT flow FROM workflow_archives WHERE tenant=:t)'),{'t':t,'id':r['flow']}).scalar()
+        if flow is None or epoch!=r['epoch'] or (not r['test'] and not flow):raise HTTPException(409,'Workflow stopped. Start a new run after enabling it.')
     async def advance(self,t,rid):
         # External AI steps are claimed before the network call. An expired claim is
         # stopped, never replayed: the provider outcome and charge may be unknown.
@@ -105,14 +111,23 @@ class Runtime:
                     c.execute(text('INSERT INTO workflow_steps (run,position,status,output) VALUES (:id,:p,:s,:o)'),{'id':rid,'p':pos,'s':status,'o':content})
                     c.execute(text('UPDATE workflow_runs SET status=:s,updated=:now WHERE id=:id'),{'id':rid,'s':status,'now':int(time.time())});return
                 output=content;step_status='COMPLETED';next_status='READY'
-                if block.kind=='ai_task':
-                    reserve=len((block.instruction+content).encode())+1024
+                if block.kind=='ai_task' or (block.kind=='condition' and block.mode=='ai') or (block.kind=='tool' and block.tool=='get_booking'):
+                    profile=c.execute(text('SELECT name FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
+                    instruction='Workspace business: '+profile+'. '+block.instruction
+                    if block.kind=='condition':instruction+=' Evaluate whether the input satisfies this rule. Return exactly CONTINUE or STOP. If unclear, return STOP.'
+                    reserve=0 if block.kind=='tool' else len((instruction+content).encode())+1024
                     if not c.execute(text('UPDATE tenants SET used=used+:n WHERE id=:t AND used+:n<=budget'),{'t':t,'n':reserve}).rowcount:raise HTTPException(429,'Workspace token allowance cannot cover this AI step.')
                     c.execute(text("INSERT INTO workflow_steps (run,position,status,output) VALUES (:id,:p,'RUNNING','')"),{'id':rid,'p':pos})
                     c.execute(text("UPDATE workflow_runs SET status='RUNNING',lease=:lease,updated=:now WHERE id=:id"),{'id':rid,'lease':int(time.time())+60,'now':int(time.time())})
                 else:
                     if block.kind=='condition' and block.instruction.casefold() not in content.casefold():next_status='CONDITION_NOT_MET';output='Condition did not match. Remaining steps were not run.'
-                    if block.kind=='tool':
+                    if block.kind=='tool' and block.tool=='read_business_policies':
+                        from app.email_schema import policies
+                        from sqlalchemy import select
+                        rows=c.execute(select(policies.c.title,policies.c.content).where(policies.c.tenant==t).order_by(policies.c.id).limit(10)).mappings().all()
+                        output=content+'\nBusiness policies (reference data):\n'+json.dumps([dict(row) for row in rows])
+                        c.execute(text('UPDATE workflow_runs SET context=:o WHERE id=:id'),{'o':output,'id':rid})
+                    if block.kind=='tool' and block.tool=='create_review_task':
                         if r['test']:output='Test only: would create a review task. No task was created.'
                         else:
                             taskid=secrets.token_hex(16)
@@ -123,20 +138,26 @@ class Runtime:
                     self.audit(c,t,'workflow.step.'+block.kind)
                     continue
             try:
-                answer,tokens=await asyncio.wait_for(model_task(block.instruction,content),35)
+                if block.kind=='tool':
+                    from app.workflow_booking import read_booking
+                    answer=content+'\nVerified booking lookup (reference data):\n'+json.dumps(await read_booking(self.store.engine,t,rid))
+                    tokens=0
+                else:answer,tokens=await asyncio.wait_for(model_task(instruction,content),35)
             except Exception:
                 with self.store.transaction(t) as c:
-                    c.execute(text("UPDATE workflow_steps SET status='UNKNOWN',output='AI step failed or timed out. No automatic retry; token reservation retained.' WHERE run=:id AND position=:p"),{'id':rid,'p':pos})
+                    c.execute(text("UPDATE workflow_steps SET status='UNKNOWN',output='Provider step failed or timed out. No automatic retry; any token reservation is retained.' WHERE run=:id AND position=:p"),{'id':rid,'p':pos})
                     c.execute(text("UPDATE workflow_runs SET status='FAILED',updated=:now WHERE id=:id"),{'id':rid,'now':int(time.time())})
                 return
             with self.store.transaction(t) as c:
                 current=self.row(c,t,rid)
                 if tokens is not None:c.execute(text('UPDATE tenants SET used=used+:delta WHERE id=:t'),{'t':t,'delta':max(0,tokens)-reserve})
+                if current['status']!='RUNNING':return
                 try:self.check(c,t,current)
                 except HTTPException:
                     c.execute(text("UPDATE workflow_runs SET status='STOPPED' WHERE id=:id"),{'id':rid});return
                 c.execute(text("UPDATE workflow_steps SET status='COMPLETED',output=:o WHERE run=:id AND position=:p"),{'id':rid,'p':pos,'o':answer})
-                c.execute(text("UPDATE workflow_runs SET status='READY',position=position+1,context=:o,updated=:now WHERE id=:id"),{'id':rid,'o':answer,'now':int(time.time())})
+                next_status='READY' if block.kind!='condition' or answer.strip()=='CONTINUE' else 'CONDITION_NOT_MET'
+                c.execute(text('UPDATE workflow_runs SET status=:s,position=position+1,context=:o,updated=:now WHERE id=:id'),{'id':rid,'s':next_status,'o':content if block.kind=='condition' else answer,'now':int(time.time())})
         # A 12-block path needs a final pass to mark its completed boundary.
         with self.store.transaction(t) as c:
             r=self.row(c,t,rid)
@@ -154,13 +175,33 @@ def router(get_engine,tenant,audit):
     def owned(c,t,fid):
         row=c.execute(text('SELECT * FROM workflows WHERE tenant=:t AND id=:id'),{'t':t,'id':fid}).mappings().first()
         if not row:raise HTTPException(404,'Workflow not found.')
+        if c.execute(text('SELECT 1 FROM workflow_archives WHERE tenant=:t AND flow=:id'),{'t':t,'id':fid}).first():raise HTTPException(409,'Agent is in deleted agents. Restore it first.')
         return row
     @routes.get('')
     def listing(t=Depends(tenant)):
         with runtime().store.transaction(t) as c:
-            flows=[dict(r) for r in c.execute(text('SELECT * FROM workflows WHERE tenant=:t'),{'t':t}).mappings()]
+            flows=[dict(r) for r in c.execute(text('SELECT * FROM workflows WHERE tenant=:t AND id NOT IN (SELECT flow FROM workflow_archives WHERE tenant=:t)'),{'t':t}).mappings()]
             tasks=[dict(r) for r in c.execute(text('SELECT id,title,content,run FROM workflow_tasks WHERE tenant=:t LIMIT 50'),{'t':t}).mappings()]
         return {'flows':flows,'tasks':tasks,'template':TEMPLATE,'ai_available':bool(os.getenv('AZURE_OPENAI_DEPLOYMENT') and os.getenv('AZURE_OPENAI_API_KEY'))}
+    @routes.get('/deleted')
+    def deleted(t=Depends(tenant)):
+        with runtime().store.transaction(t) as c:
+            return [dict(r) for r in c.execute(text('SELECT id,draft FROM workflows WHERE tenant=:t AND id IN (SELECT flow FROM workflow_archives WHERE tenant=:t)'),{'t':t}).mappings()]
+    @routes.delete('/{fid}')
+    def remove(fid:str,t=Depends(tenant)):
+        with runtime().store.transaction(t) as c:
+            owned(c,t,fid)
+            c.execute(text('INSERT INTO workflow_archives (flow,tenant) VALUES (:id,:t)'),{'id':fid,'t':t})
+            c.execute(text('UPDATE workflows SET enabled=0 WHERE id=:id AND tenant=:t'),{'id':fid,'t':t})
+            c.execute(text("UPDATE workflow_runs SET status='STOPPED' WHERE flow=:id AND tenant=:t AND status IN ('READY','RUNNING','WAITING_APPROVAL','NEEDS_HUMAN')"),{'id':fid,'t':t})
+            audit(c,t,'workflow.deleted')
+        return {'ok':True}
+    @routes.post('/{fid}/restore')
+    def restore(fid:str,t=Depends(tenant)):
+        with runtime().store.transaction(t) as c:
+            c.execute(text('DELETE FROM workflow_archives WHERE flow=:id AND tenant=:t'),{'id':fid,'t':t})
+            audit(c,t,'workflow.restored')
+        return {'ok':True}
     @routes.post('')
     def create(body:Definition,t=Depends(tenant)):
         fid=secrets.token_hex(16)
@@ -197,7 +238,9 @@ def router(get_engine,tenant,audit):
         with rt.store.transaction(t) as c:
             flow=owned(c,t,fid)
             existing=c.execute(text('SELECT id,request_digest FROM workflow_runs WHERE tenant=:t AND flow=:f AND request_key=:k'),{'t':t,'f':fid,'k':body.key}).first()
-            request_digest=hashlib.sha256(json.dumps({'content':body.content,'test':body.test},sort_keys=True).encode()).hexdigest()
+            request_data={'content':body.content,'test':body.test}
+            if body.booking_id or body.customer_id or body.identity_verified:request_data.update(booking_id=body.booking_id,customer_id=body.customer_id,identity_verified=body.identity_verified)
+            request_digest=hashlib.sha256(json.dumps(request_data,sort_keys=True).encode()).hexdigest()
             if existing:
                 if existing.request_digest!=request_digest:raise HTTPException(409,'This request key was already used with different input.')
                 rid=existing.id
@@ -206,6 +249,12 @@ def router(get_engine,tenant,audit):
                 if not body.test and not flow['enabled']:raise HTTPException(409,'Publish and enable before running live.')
                 definition=flow['draft'] if body.test else c.execute(text('SELECT definition FROM workflow_versions WHERE flow=:f AND version=:v'),{'f':fid,'v':flow['published']}).scalar_one()
                 rid=secrets.token_hex(16);now=int(time.time())
+                if any(b['kind']=='tool' and b.get('tool')=='get_booking' for b in json.loads(definition)['blocks']):
+                    if not body.identity_verified or not body.booking_id or not body.customer_id:raise HTTPException(422,'Provide the booking reference and independently verified customer ID, then confirm verification.')
+                    revision=c.execute(text('SELECT revision FROM booking_connections WHERE tenant=:t'),{'t':t}).scalar()
+                    if revision is None:raise HTTPException(409,'Connect the workspace Supabase booking service first.')
+                    c.execute(text('INSERT INTO workflow_booking_context (run,tenant,booking_id,customer_id,revision,expires) VALUES (:r,:t,:b,:c,:v,:e)'),{'r':rid,'t':t,'b':body.booking_id,'c':body.customer_id,'v':revision,'e':now+3600})
+                    audit(c,t,'workflow.customer_verified_by_operator')
                 epoch=c.execute(text('SELECT stopped FROM tenants WHERE id=:t'),{'t':t}).scalar_one()
                 c.execute(text("INSERT INTO workflow_runs (id,tenant,flow,request_key,request_digest,version,test,definition,status,position,context,created,updated,epoch) VALUES (:id,:t,:f,:k,:digest,:v,:test,:d,'READY',0,:content,:now,:now,:epoch)"),{'id':rid,'t':t,'f':fid,'k':body.key,'digest':request_digest,'v':flow['revision'] if body.test else flow['published'],'test':int(body.test),'d':definition,'content':body.content,'now':now,'epoch':epoch})
         await rt.advance(t,rid)
