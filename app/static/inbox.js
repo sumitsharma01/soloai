@@ -9,6 +9,7 @@ const inboxStatus = row => row.delivery ? row.delivery.status : row.needs_human 
 const labelOptions = (chosen=[], all=false) => (all?'<option value="">All emails</option>':'') + inboxState.labels.map(l=>`<option value="${esc(l.id)}" ${chosen.includes(l.id)?'selected':''}>${esc(l.name)}</option>`).join('');
 
 async function showEmailReview() {
+  activateEmailPage('inbox');
   const page=document.querySelector('#page');
   document.querySelector('.content').classList.add('inbox-mode');
   const notice=document.querySelector('.content > .notice');if(notice)notice.hidden=true;

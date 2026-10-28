@@ -243,3 +243,15 @@ Azure connectivity or production readiness.
 ## Optional external booking source
 
 Use the [curated MCP booking adapter](MCP.md) to replace local snapshot lookup for selected workspaces. It preserves the existing get_booking contract and tool limits. Configuration failure stops the lookup rather than falling back.
+
+## Email overview
+
+Expand **Email Support** in the sidebar to open **Overview**, **Support Inbox** or **Configuration**. Click the agent name again to collapse its children.
+
+Overview shows retained queued email counts, review backlog, human-assistance flags, sent replies, failed processing and delivery, and uncertain delivery outcomes. The seven-day chart groups incoming queue records by UTC date. Manual draft tests are excluded. Counts are isolated to your workspace.
+
+Token accounting covers finished queued executions and can include conservative reservations after uncertain provider outcomes. Average latency runs from queue arrival to processing completion, including queue time and retries. It is not provider-only latency or time to customer delivery. Empty latency samples display “No samples”.
+
+Sending permissions and automatic-send rules are shown separately. An authorized mailbox is not proof of current connectivity; use **View connector health** to investigate it. Refresh loads a new snapshot. The overview does not expose message bodies or drafts.
+
+![Email overview](screenshots/email-overview.png)

@@ -255,3 +255,16 @@ def test_label_colour_upgrade_preserves_existing_rows(tmp_path):
         assert 'colour' in {x['name'] for x in inspect(c).get_columns('inbox_labels')}
         assert c.execute(text('SELECT name,colour FROM inbox_labels')).one()==('Query','slate')
     engine.dispose()
+
+
+def test_email_overview_scoped_without_message_content(setup):
+    s=setup
+    enqueue(s,content='PRIVATE message never included in metrics')
+    a=s.a.get('/api/inbox/overview');b=s.b.get('/api/inbox/overview')
+    assert a.status_code==200 and b.status_code==200
+    assert a.json()['statuses']=={'QUEUED':1}
+    assert b.json()['statuses']=={}
+    assert sum(x['received'] for x in a.json()['daily'])==1
+    assert a.json()['agent_id']!=b.json()['agent_id']
+    assert a.json()['usage']['latency'] is None
+    assert 'PRIVATE' not in a.text

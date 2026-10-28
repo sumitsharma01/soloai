@@ -2,6 +2,8 @@
 
 # SoloAI
 
+**Current release: v0.2.0 · Preview** · [Release notes](CHANGELOG.md)
+
 ## One platform. Many agents.
 
 SoloAI gives founders a place to connect their tools and put agents to work. The goal is fewer repetitive tasks, clear permissions and guardrails you can understand without learning how AI infrastructure works.
@@ -11,6 +13,16 @@ Your application stays where it is, whether that is Vercel, AWS or another host.
 **Create an account → Connect a tool → Set your agent's guidance → Turn it on.**
 
 We are starting with customer support. Website Chat answers questions using your guidance. Email Support prepares replies for review. We will add more agents as these workflows prove useful and reliable.
+
+## Custom flows preview
+
+Create a custom agent from six blocks: manual trigger, AI task, approved tool, condition, approval and human handoff. It appears in My agents with a connected block diagram and a recoverable delete option. Tools can read workspace policies, look up a verified customer booking through the connected Supabase service, or create an internal review task. Conditions can use a text match or an AI assessment of a business rule. Test a draft, publish its version, then enable it. Runs and decisions are saved so they can be inspected and resumed. External writes and automatic triggers are not connected yet. See the [workflow builder guide](docs/WORKFLOW-BUILDER.md).
+
+## Voice Receptionist preview
+
+Configure a receptionist and try a microphone conversation from SoloAI. Enter your business information, instructions and greeting, then choose the configured Azure model and a voice. No customer Azure account or LiveKit setup is required.
+
+This preview supports browser conversations. It can prepare callback requests for confirmation and, in local development, demonstrate booking lookups and confirmed changes using synthetic records. It does not connect a telephone number, transfer calls or change real bookings. Azure audio usage is billed separately. See the [voice setup guide](docs/VOICE-RECEPTIONIST.md) for operator configuration and limits.
 
 ## Try it on your computer
 

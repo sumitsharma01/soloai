@@ -108,6 +108,32 @@ def valid_labels(c,t,ids):
 def router(get_store, tenant):
     routes=APIRouter(prefix='/api/inbox')
 
+    @routes.get('/overview')
+    def overview(t=Depends(tenant)):
+        from sqlalchemy import func
+        import hashlib
+        store=get_store();now=int(time.time())
+        with store.transaction(t) as c:
+            statuses=dict(c.execute(select(jobs.c.status,func.count()).where(jobs.c.tenant==t).group_by(jobs.c.status)).all())
+            delivery_counts=dict(c.execute(select(deliveries.c.status,func.count()).where(deliveries.c.tenant==t).group_by(deliveries.c.status)).all())
+            human=c.execute(select(func.count()).select_from(jobs).where(jobs.c.tenant==t,jobs.c.status=='WAITING_FOR_REVIEW',jobs.c.needs_human==True)).scalar_one()
+            cfg=c.execute(select(settings).where(settings.c.tenant==t)).mappings().first()
+            usage=c.execute(text('SELECT COALESCE(SUM(e.tokens),0) AS tokens, COUNT(*) AS samples, AVG(e.latency) AS latency FROM executions e JOIN email_jobs j ON j.execution_id=e.id AND j.tenant=e.tenant WHERE j.tenant=:t AND j.completed_at IS NOT NULL'),{'t':t}).mappings().one()
+            daily=[dict(r) for r in c.execute(select(jobs.c.created_at).where(jobs.c.tenant==t,jobs.c.created_at>=now//86400*86400-6*86400)).mappings()]
+            auto_sent=c.execute(select(func.count()).select_from(deliveries).where(deliveries.c.tenant==t,deliveries.c.status=='SENT',deliveries.c.actor=='agent')).scalar_one()
+        buckets=[{'date':time.strftime('%Y-%m-%d',time.gmtime((now//86400-i)*86400)),'received':0} for i in range(6,-1,-1)]
+        for row in daily:
+            day=time.strftime('%Y-%m-%d',time.gmtime(row['created_at']))
+            for bucket in buckets:
+                if bucket['date']==day:bucket['received']+=1;break
+        return {'agent_id':'email-'+hashlib.sha256(t.encode()).hexdigest()[:16],'statuses':statuses,'deliveries':delivery_counts,
+                'needs_human':human,'automatic':bool(cfg and cfg['automatic']),'daily_limit':cfg['daily_limit'] if cfg else 20,
+                'send_authorized':send_permission_for_overview(store,t),'auto_sent':auto_sent,'usage':dict(usage),'daily':buckets,'updated':now}
+
+    def send_permission_for_overview(store,t):
+        with store.transaction(t) as c:
+            return {'gmail':send_permission(c,t,'gmail'),'outlook':send_permission(c,t,'outlook')}
+
     @routes.post('/instructions/assist')
     def assist(body:AssistInput,t=Depends(tenant)):
         from app import instruction_assist
